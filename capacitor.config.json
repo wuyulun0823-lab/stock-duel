@@ -1,0 +1,11 @@
+{
+  "appId": "com.stockduel.app",
+  "appName": "美股對決",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
