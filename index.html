@@ -26,7 +26,7 @@ button.r{background:#da3633}button.g{background:#30363d}input{font-size:20px;pad
 <div class="card"><span id="rd"></span><div class="bar"><div id="tb"></div></div></div>
 <div id="news" class="card news"></div>
 <div class="card">股數 <select id="qty"><option>10</option><option selected>50</option><option>100</option><option>500</option></select> <small>你的現金：<b id="cash"></b></small><br><small>道具剩餘：<b id="pwi"></b>（雙方持股互不公開，對手資產每回合結束才更新）</small>
-<div class="tw"><table id="tbl"></table></div><small>買＝做多/回補空單；賣＝賣出/放空（持股可為負）；🚀＝把該股拉抬一波、💣＝砸盤一波，每人各 2 次</small></div>
+<div class="tw"><table id="tbl"></table></div><small>買＝做多/回補空單；賣＝賣出/放空（持股可為負）；🚀＝把該股拉抬一波、💣＝砸盤一波，開局各 2 個，每 2 回合再補 🚀×2、💣×2</small></div>
 <div id="log" class="card" style="font-size:13px;max-height:120px;overflow:auto"></div>
 </div></div>
 <script>
@@ -50,7 +50,7 @@ function start(){S={round:1,R:+$('rounds').value,tick:0,news:'',over:false,log:[
 function newsCard(){const n=NEWS[Math.random()*NEWS.length|0];S.news='第 '+S.round+' 回合快訊：'+n[2];S.st.forEach(x=>{if(n[0]=='*'||n[0]==x.s)x.d=n[1]/8;else x.d=0})}
 function tick(){if(S.over)return;S.tick++;
  S.st.forEach(x=>{let r=(Math.random()-.5)*.045+(x.d||0);if(x.d)x.d*=.8;if(Math.random()<.03)r+=(Math.random()-.5)*.25;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2))});
- if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];S.st.forEach(x=>x.o=x.p);if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard()}}send()}
+ if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];S.st.forEach(x=>x.o=x.p);if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard();if((S.round-1)%2==0){S.pl.forEach(p=>{p.up+=2;p.dn+=2});S.log.unshift({w:-1,t:'🎁 補給：雙方各獲得 🚀×2、💣×2'});S.log=S.log.slice(0,20)}}}send()}
 function eq(i){const p=S.pl[i];return p.cash+S.st.reduce((a,x)=>a+(p.pos[x.s]||0)*x.p,0)}
 function act(i,d){if(S.over)return;const x=S.st.find(t=>t.s==d.s);if(!x)return;const q=d.q|0,p=S.pl[i];
  if(d.pw){const k=d.pw>0?'up':'dn';if(p[k]<=0)return;p[k]--;x.p=+(x.p*(1+d.pw*.06)).toFixed(2);x.d=d.pw*.03;S.log.unshift({w:-1,t:(d.pw>0?'🚀 神秘大戶拉抬 ':'💣 神秘空頭砸盤 ')+x.s+'！'});S.log=S.log.slice(0,20);send();return}
