@@ -1,0 +1,68 @@
+<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>美股對決 Stock Duel</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+body{margin:0;font-family:system-ui,"Noto Sans TC",sans-serif;background:#0d1117;color:#e6edf3}
+.wrap{max-width:720px;margin:auto;padding:12px}h1{text-align:center;font-size:22px}
+button{background:#238636;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-size:16px;margin:3px;cursor:pointer}
+button.r{background:#da3633}button.g{background:#30363d}input{font-size:20px;padding:8px;width:120px;text-transform:uppercase;text-align:center;border-radius:8px;border:1px solid #444;background:#161b22;color:#fff}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px;margin:8px 0}
+.hud{display:flex;gap:8px}.hud .card{flex:1;text-align:center}.big{font-size:22px;font-weight:bold}
+.up{color:#3fb950}.dn{color:#f85149}table{width:100%;border-collapse:collapse}td{padding:6px 3px;border-bottom:1px solid #222;font-size:15px}
+.news{background:#3a2a00;border-color:#d29922;font-weight:bold}.bar{height:10px;background:#30363d;border-radius:5px;overflow:hidden}.bar div{height:100%;background:#1f6feb}
+.code{font-size:36px;letter-spacing:6px;color:#d29922;text-align:center}.hide{display:none}small{color:#8b949e}
+</style></head><body><div class="wrap">
+<h1>📈 美股對決 Stock Duel</h1>
+<div id="lobby" class="card" style="text-align:center">
+<p>所有股票、價格、新聞皆為虛構</p>
+<p>回合數 <select id="rounds"><option>3</option><option selected>5</option><option>8</option></select></p>
+<button onclick="host()">建立房間</button>
+<p>或輸入房間碼：<br><input id="code" maxlength="6"> <button onclick="join()">加入</button></p>
+<div id="info"></div></div>
+<div id="game" class="hide">
+<div class="hud"><div class="card"><div id="n0">房主</div><div id="e0" class="big"></div><div id="p0"></div></div>
+<div class="card"><div id="n1">挑戰者</div><div id="e1" class="big"></div><div id="p1"></div></div></div>
+<div class="card"><span id="rd"></span><div class="bar"><div id="tb"></div></div></div>
+<div id="news" class="card news"></div>
+<div class="card">股數 <select id="qty"><option>10</option><option selected>50</option><option>100</option><option>500</option></select> <small>你的現金：<b id="cash"></b></small>
+<table id="tbl"></table><small>買＝做多/回補空單；賣＝賣出/放空（持股可為負）</small></div>
+<div id="log" class="card" style="font-size:13px;max-height:120px;overflow:auto"></div>
+</div></div>
+<script>
+const PFX='stockduel-tw-',TICKS=30,START=100000;
+const TK=[["FRUIT","水果科技"],["CARZ","卡斯電動車"],["CHIPZ","晶片狂人"],["OILX","大油石油"],["MEGA","超巨零售"],["CLOUD","雲端王國"],["MEME","迷因娛樂"],["BANKO","銀可金融"]];
+const NEWS=[["FRUIT",.15,"🍎 FRUIT 發表摺疊眼鏡手機，預購秒殺！"],["FRUIT",-.12,"🍎 FRUIT 執行長被拍到用對手手機"],["CARZ",.2,"🚗 CARZ 自駕車成功橫越沙漠"],["CARZ",-.18,"🚗 CARZ 召回 50 萬台：方向盤會唱歌"],["CHIPZ",.22,"💾 CHIPZ 拿下 AI 超大訂單"],["CHIPZ",-.15,"💾 CHIPZ 工廠停電，晶圓變鬆餅"],["OILX",.18,"🛢️ 產油國宣布減產"],["OILX",-.2,"🛢️ 人類發明喝水就能跑的引擎"],["MEGA",.1,"🛒 MEGA 黑色星期五營收創新高"],["CLOUD",.16,"☁️ CLOUD 宣布全球最大資料中心"],["CLOUD",-.14,"☁️ CLOUD 大當機 6 小時"],["MEME",.4,"🐸 MEME 被網紅喊上月球！"],["MEME",-.35,"🐸 MEME 網紅說他只是開玩笑"],["BANKO",-.15,"🏦 BANKO 被爆壞帳"],["*",.06,"🦅 聯準會意外降息，全面大漲！"],["*",-.07,"🐻 經濟衰退警報，全面重挫！"]];
+let peer,conn,isHost=false,me=0,S=null;
+const $=id=>document.getElementById(id);
+function rc(){let c='',a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';for(let i=0;i<6;i++)c+=a[Math.random()*a.length|0];return c}
+function host(){isHost=true;me=0;const code=rc();peer=new Peer(PFX+code);
+ peer.on('open',()=>{$('info').innerHTML='房間碼<div class="code">'+code+'</div>把房間碼傳給朋友，等待加入…'});
+ peer.on('error',e=>$('info').textContent='錯誤：'+e.type);
+ peer.on('connection',c=>{if(conn){c.close();return}conn=c;c.on('open',()=>start());c.on('data',d=>act(1,d));c.on('close',()=>alert('對手已離線'))})}
+function join(){const code=$('code').value.trim().toUpperCase();if(code.length!=6)return alert('請輸入 6 碼');me=1;peer=new Peer();
+ peer.on('open',()=>{$('info').textContent='連線中…';conn=peer.connect(PFX+code,{reliable:true});
+  conn.on('open',()=>$('info').textContent='已連線，等待開始…');conn.on('data',d=>{S=d;render()});conn.on('close',()=>alert('房主已離線'))});
+ peer.on('error',e=>$('info').textContent=e.type=='peer-unavailable'?'找不到房間':'錯誤：'+e.type)}
+function start(){S={round:1,R:+$('rounds').value,tick:0,news:'',over:false,log:[],
+ st:TK.map(([s,n])=>({s,n,p:+(20+Math.random()*280).toFixed(2),o:0,d:0})),pl:[{cash:START,pos:{}},{cash:START,pos:{}}]};
+ S.st.forEach(x=>x.o=x.p);newsCard();send();setInterval(tick,1000)}
+function newsCard(){const n=NEWS[Math.random()*NEWS.length|0];S.news='第 '+S.round+' 回合快訊：'+n[2];S.st.forEach(x=>{if(n[0]=='*'||n[0]==x.s)x.d=n[1]/8;else x.d=0})}
+function tick(){if(S.over)return;S.tick++;
+ S.st.forEach(x=>{let r=(Math.random()-.5)*.03+(x.d||0);if(x.d)x.d*=.8;if(Math.random()<.02)r+=(Math.random()-.5)*.2;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2))});
+ if(S.tick>=TICKS){S.st.forEach(x=>x.o=x.p);if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard()}}send()}
+function eq(i){const p=S.pl[i];return p.cash+S.st.reduce((a,x)=>a+(p.pos[x.s]||0)*x.p,0)}
+function act(i,d){if(S.over)return;const x=S.st.find(t=>t.s==d.s);if(!x)return;const q=d.q|0,p=S.pl[i];
+ if(q>0&&p.cash<q*x.p)return; // 買不起
+ if(q<0&&eq(i)<Math.abs(q)*x.p*0.5&&(p.pos[x.s]||0)<=0)return; // 放空保證金不足
+ p.cash-=q*x.p;p.pos[x.s]=(p.pos[x.s]||0)+q;S.log.unshift((i?'挑戰者':'房主')+(q>0?' 買 ':' 賣 ')+Math.abs(q)+' '+x.s+' @'+x.p);S.log=S.log.slice(0,20);send()}
+function trade(s,dir){const q=dir*+$('qty').value;if(isHost)act(0,{s,q});else conn.send({s,q})}
+function send(){if(conn&&conn.open)conn.send(S);render()}
+function money(v){return '$'+Math.round(v).toLocaleString()}
+function render(){if(!S)return;$('lobby').classList.add('hide');$('game').classList.remove('hide');
+ for(let i=0;i<2;i++){const e=eq(i),pl=e-START;$('e'+i).textContent=money(e);$('p'+i).innerHTML='<span class="'+(pl>=0?'up':'dn')+'">'+(pl>=0?'+':'')+money(pl)+'</span>';$('n'+i).textContent=(i?'挑戰者':'房主')+(i==me?'（你）':'')}
+ $('rd').textContent=S.over?'比賽結束':'第 '+S.round+'/'+S.R+' 回合・剩 '+(TICKS-S.tick)+' 秒';$('tb').style.width=(S.tick/TICKS*100)+'%';
+ $('cash').textContent=money(S.pl[me].cash);
+ if(S.over){const a=eq(me),b=eq(1-me);$('news').innerHTML=a>b?'🏆 恭喜你獲勝！華爾街之狼就是你！':a<b?'😭 你輸了…下次記得停損！':'🤝 平手！英雄所見略同';}else $('news').textContent=S.news;
+ $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;return '<tr><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td><button onclick="trade(\''+x.s+'\',1)">買</button><button class="r" onclick="trade(\''+x.s+'\',-1)">賣</button></td></tr>'}).join('');
+ $('log').innerHTML=S.log.join('<br>')}
+</script></body></html>
