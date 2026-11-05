@@ -18,6 +18,10 @@ button.r{background:#da3633}button.g{background:#30363d}input{font-size:20px;pad
 button{transition:transform .1s,filter .2s}button:active{transform:scale(.94)}button:hover{filter:brightness(1.15)}
 #tv{position:relative;overflow:hidden;background:linear-gradient(#111,#000)!important;border-radius:14px}
 #tv:empty{display:none}
+.anc{float:left;margin-right:10px;animation:slidein .6s}.anc .mo{animation:talk .25s infinite alternate;transform-origin:60px 43px}.anc .hd{animation:nod 1.6s ease-in-out infinite;transform-origin:60px 50px}.anc .ey{animation:blink 3s infinite;transform-origin:center;transform-box:fill-box}.anc .arm{animation:gest 1.2s ease-in-out infinite;transform-origin:78px 61px;transform-box:view-box}
+@keyframes talk{from{transform:scaleY(.4)}to{transform:scaleY(2.2)}}@keyframes nod{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}@keyframes blink{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}@keyframes gest{0%,100%{transform:rotate(0)}50%{transform:rotate(-18deg)}}@keyframes slidein{from{transform:translateX(-60px);opacity:0}}
+#tv{min-height:120px}
+
 #tv .tk{white-space:nowrap;display:inline-block;animation:mq 12s linear infinite;padding-left:100%}
 #tv.on{animation:tvon .5s ease-out}
 @keyframes tvon{0%{transform:scaleY(.02);filter:brightness(3)}60%{transform:scaleY(1.05)}100%{transform:none}}
@@ -46,7 +50,7 @@ tr{transition:background .8s}tr.fu{animation:fu .9s}tr.fd{animation:fd .9s}
 <div id="log" class="card" style="font-size:13px;max-height:120px;overflow:auto"></div>
 </div></div>
 <script>
-const PFX='stockduel-tw-',TICKS=30,START=100000;
+const PFX='stockduel-tw-',TICKS=120,NEWS_S=8,START=100000;
 const TK=[["AAPL","蘋果"],["TSLA","特斯拉"],["NVDA","輝達"],["AMZN","亞馬遜"],["META","Meta"],["GOOGL","谷歌"],["MSFT","微軟"],["NFLX","網飛"],["AMD","超微"],["INTC","英特爾"],["BA","波音"],["DIS","迪士尼"],["KO","可口可樂"],["JPM","摩根大通"],["XOM","埃克森美孚"],["COST","好市多"],["COIN","Coinbase"],["PLTR","Palantir"],["SMCI","美超微"],["GME","GameStop"]];
 const NEWS=[["AAPL",.15,"🍎 AAPL 發表摺疊眼鏡手機，預購秒殺！"],["AAPL",-.12,"🍎 AAPL 執行長被拍到用對手手機"],["TSLA",.2,"🚗 TSLA 自駕車成功橫越沙漠"],["TSLA",-.18,"🚗 TSLA 召回 50 萬台：方向盤會唱歌"],["NVDA",.22,"💾 NVDA 拿下 AI 超大訂單"],["NVDA",-.15,"💾 NVDA 工廠停電，晶圓變鬆餅"],["XOM",.18,"🛢️ 產油國宣布減產"],["XOM",-.2,"🛢️ 人類發明喝水就能跑的引擎"],["AMZN",.1,"🛒 AMZN 黑色星期五營收創新高"],["MSFT",.16,"☁️ MSFT 宣布全球最大資料中心"],["MSFT",-.14,"☁️ MSFT 大當機 6 小時"],["GME",.4,"🐸 GME 被網紅喊上月球！"],["GME",-.35,"🐸 GME 網紅說他只是開玩笑"],["JPM",-.15,"🏦 JPM 被爆壞帳"],["*",.06,"🦅 聯準會意外降息，全面大漲！"],["*",-.07,"🐻 經濟衰退警報，全面重挫！"]];
 let peer,conn,isHost=false,me=0,S=null;
@@ -62,17 +66,18 @@ function join(){const code=$('code').value.trim().toUpperCase();if(code.length!=
  peer.on('error',e=>$('info').textContent=e.type=='peer-unavailable'?'找不到房間':'錯誤：'+e.type)}
 function start(){S={round:1,R:+$('rounds').value,tick:0,news:'',over:false,log:[],
  st:TK.map(([s,n])=>({s,n,p:+(20+Math.random()*280).toFixed(2),o:0,d:0})),snap:[START,START],pl:[{cash:START,pos:{},up:2,dn:2,sn:1},{cash:START,pos:{},up:2,dn:2,sn:1}]};
- S.st.forEach(x=>x.o=x.p);newsCard();send();setInterval(tick,1000)}
+ S.st.forEach(x=>x.o=x.p);newsCard();S.brk=NEWS_S;send();setInterval(tick,1000)}
+const ANCHOR='<div class="anc"><svg viewBox="0 0 120 110" width="120" height="110"><rect x="0" y="80" width="120" height="30" fill="#1f6feb"/><g class="bod"><rect x="38" y="52" width="44" height="34" rx="10" fill="#2d333b"/><polygon points="60,54 55,66 60,80 65,66" fill="#d29922"/><g class="hd"><circle cx="60" cy="34" r="18" fill="#f2c9a0"/><path d="M42 30q18-22 36 0q-4-10-18-12q-14 2-18 12z" fill="#3b2a1a"/><circle class="ey" cx="53" cy="32" r="2.2" fill="#000"/><circle class="ey" cx="67" cy="32" r="2.2" fill="#000"/><ellipse class="mo" cx="60" cy="43" rx="5" ry="2" fill="#a33"/></g><rect class="arm" x="78" y="58" width="22" height="7" rx="3" fill="#2d333b"/><rect x="96" y="54" width="10" height="14" rx="2" fill="#eee"/></g><rect x="20" y="86" width="80" height="20" fill="#0d1117"/><text x="60" y="100" fill="#58a6ff" font-size="10" text-anchor="middle">WALL ST TV</text></svg></div>';
 function tvClue(){const x=S.st[Math.random()*S.st.length|0],up=Math.random()<.5,real=Math.random()<.55;
 const U=['財報大爆發！營收年增 87%','傳出被巨頭收購，溢價三成！','CEO 直播吃播宣布神祕新產品','分析師上調目標價至天際','獲得政府超大訂單'],D=['財報暴雷！獲利腰斬','傳 CFO 連夜搭機出境','遭監管機關突擊調查','工廠冒煙，產線停擺','大股東狂倒貨中'],SRC=['📺 華爾街晨間快報','📺 股市名嘴老王','📺 匿名內線爆料','📺 財經台獨家','📺 鄰居阿姨說'];
 const L=up?U:D;S.tv={s:x.s,t:SRC[Math.random()*SRC.length|0]+'：'+x.s+' '+L[Math.random()*L.length|0]+(up?' 📈':' 📉'),real,up};
 x.d+=((up==real)?1:-1)*(0.4+Math.random()*.4)}
 function newsCard(){const n=NEWS[Math.random()*NEWS.length|0];S.news='第 '+S.round+' 回合快訊：'+n[2];S.st.forEach(x=>{if(n[0]=='*'||n[0]==x.s)x.d=n[1]/8;else x.d=0});tvClue()}
-function tick(){if(S.over)return;S.tick++;
+function tick(){if(S.over)return;if(S.brk>0){S.brk--;send();return}S.tick++;
  S.st.forEach(x=>{let r=(Math.random()-.5)*.045+(x.d||0);if(x.d)x.d*=.8;if(Math.random()<.03)r+=(Math.random()-.5)*.25;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2))});
- if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];if(S.tv){S.log.unshift({w:-1,t:'🕵️ 盤前線索「'+S.tv.s+'」結果：'+(S.tv.real?'✅ 消息屬實':'❌ 假消息，騙到你了吧')})}S.st.forEach(x=>x.o=x.p);if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard();if((S.round-1)%2==0){S.pl.forEach(p=>{p.up+=2;p.dn+=2;p.sn=(p.sn||0)+1});S.log.unshift({w:-1,t:'🎁 補給：雙方各獲得 🚀×2、💣×2、🎯×1'});S.log=S.log.slice(0,20)}}}send()}
+ if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];if(S.tv){S.log.unshift({w:-1,t:'🕵️ 盤前線索「'+S.tv.s+'」結果：'+(S.tv.real?'✅ 消息屬實':'❌ 假消息，騙到你了吧')})}S.st.forEach(x=>x.o=x.p);if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard();S.brk=NEWS_S;if((S.round-1)%2==0){S.pl.forEach(p=>{p.up+=2;p.dn+=2;p.sn=(p.sn||0)+1});S.log.unshift({w:-1,t:'🎁 補給：雙方各獲得 🚀×2、💣×2、🎯×1'});S.log=S.log.slice(0,20)}}}send()}
 function eq(i){const p=S.pl[i];return p.cash+S.st.reduce((a,x)=>a+(p.pos[x.s]||0)*x.p,0)}
-function act(i,d){if(S.over)return;const x=S.st.find(t=>t.s==d.s);if(!x)return;const q=d.q|0,p=S.pl[i];
+function act(i,d){if(S.over||S.brk>0)return;const x=S.st.find(t=>t.s==d.s);if(!x)return;const q=d.q|0,p=S.pl[i];
  if(d.sn){if(!(p.sn>0))return;p.sn--;const m=(Math.random()<.5?-1:1)*(.08+Math.random()*.07);x.p=+(x.p*(1+m)).toFixed(2);S.log.unshift({w:-1,t:'🎯 狙擊！'+x.s+' 瞬間'+(m>0?'暴漲 +':'暴跌 ')+(m*100).toFixed(1)+'%'});S.log=S.log.slice(0,20);send();return}
  if(d.pw){const k=d.pw>0?'up':'dn';if(p[k]<=0)return;p[k]--;x.p=+(x.p*(1+d.pw*.06)).toFixed(2);x.d=d.pw*.03;S.log.unshift({w:-1,t:(d.pw>0?'🚀 神秘大戶拉抬 ':'💣 神秘空頭砸盤 ')+x.s+'！'});S.log=S.log.slice(0,20);send();return}
  if(q>0&&p.cash<q*x.p)return; // 買不起
@@ -85,9 +90,9 @@ function send(){if(conn&&conn.open){const v=JSON.parse(JSON.stringify(S));v.pl[0
 function money(v){return '$'+Math.round(v).toLocaleString()}
 function render(){if(!S)return;$('lobby').classList.add('hide');$('game').classList.remove('hide');
  for(let i=0;i<2;i++){const op=i!=me,e=op?S.snap[i]:eq(i),pl=e-START;$('e'+i).textContent=money(e);$('p'+i).innerHTML='<span class="'+(pl>=0?'up':'dn')+'">'+(pl>=0?'+':'')+money(pl)+'</span>'+(op?'<br><small>'+(S.over?'最終資產':'🔒 上回合結算・持股不公開')+'</small>':'');$('n'+i).textContent=(i?'挑戰者':'房主')+(i==me?'（你）':'')}
- $('rd').textContent=S.over?'比賽結束':'第 '+S.round+'/'+S.R+' 回合・剩 '+(TICKS-S.tick)+' 秒';$('tb').style.width=(S.tick/TICKS*100)+'%';
+ $('rd').textContent=S.over?'比賽結束':S.brk>0?'📺 第 '+S.round+'/'+S.R+' 回合・新聞播報中… '+S.brk+' 秒後開盤':'第 '+S.round+'/'+S.R+' 回合・剩 '+(TICKS-S.tick)+' 秒';$('tb').style.width=(S.tick/TICKS*100)+'%';
  $('cash').textContent=money(S.pl[me].cash);$('pwi').textContent='🚀拉抬 '+S.pl[me].up+'・💣砸盤 '+S.pl[me].dn+'・🎯狙擊 '+(S.pl[me].sn||0);
- if(S.over){const a=S.snap[me],b=S.snap[1-me];$('news').innerHTML=a>b?'🏆 恭喜你獲勝！華爾街之狼就是你！':a<b?'😭 你輸了…下次記得停損！':'🤝 平手！英雄所見略同';}else $('news').textContent=S.news;{const tt=S.tv&&!S.over?S.tv.t:'';if(tt!==window._tv){window._tv=tt;const v=$('tv');v.innerHTML=tt?'<small class="live" style="color:#f85149">● LIVE</small> <small>盤前線索（可能是真的，也可能是騙人的）</small><div style="font-size:18px;margin-top:4px;overflow:hidden"><span class="tk">'+tt+'</span></div>':'';v.classList.remove('on');void v.offsetWidth;v.classList.add('on')}}
+ if(S.over){const a=S.snap[me],b=S.snap[1-me];$('news').innerHTML=a>b?'🏆 恭喜你獲勝！華爾街之狼就是你！':a<b?'😭 你輸了…下次記得停損！':'🤝 平手！英雄所見略同';}else $('news').textContent=S.news;{const tt=S.tv&&!S.over?S.tv.t+(S.brk>0?'#b':''):'';if(tt!==window._tv){window._tv=tt;const v=$('tv');v.innerHTML=tt?(S.brk>0?ANCHOR:'')+'<small class="live" style="color:#f85149">● LIVE</small> <small>盤前線索（可能是真的，也可能是騙人的）</small><div style="font-size:18px;margin-top:4px;overflow:hidden"><span class="tk">'+tt+'</span></div>':'';v.classList.remove('on');void v.offsetWidth;v.classList.add('on')}}
  $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;const lp=(window._lp=window._lp||{})[x.s],fc=lp==null||lp==x.p?'':lp<x.p?'fu':'fd';window._lp[x.s]=x.p;return '<tr class="'+fc+'"><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td><button onclick="trade(\''+x.s+'\',1)">買</button><button class="r" onclick="trade(\''+x.s+'\',-1)">賣</button><br><button class="pw" onclick="pw(\''+x.s+'\',1)">🚀</button><button class="pw" onclick="pw(\''+x.s+'\',-1)">💣</button><button class="pw" onclick="sn(\''+x.s+'\')">🎯</button></td></tr>'}).join('');
  $('log').innerHTML=S.log.filter(l=>l.w<0||l.w==me).map(l=>l.t).join('<br>')}
 </script>
