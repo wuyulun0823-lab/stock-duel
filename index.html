@@ -2,6 +2,7 @@
 <title>美股對決 Stock Duel</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
+.tw{max-height:60vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 body{margin:0;font-family:system-ui,"Noto Sans TC",sans-serif;background:#0d1117;color:#e6edf3}
 .wrap{max-width:720px;margin:auto;padding:12px}h1{text-align:center;font-size:22px}
 button{background:#238636;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-size:16px;margin:3px;cursor:pointer}
@@ -25,12 +26,12 @@ button.r{background:#da3633}button.g{background:#30363d}input{font-size:20px;pad
 <div class="card"><span id="rd"></span><div class="bar"><div id="tb"></div></div></div>
 <div id="news" class="card news"></div>
 <div class="card">股數 <select id="qty"><option>10</option><option selected>50</option><option>100</option><option>500</option></select> <small>你的現金：<b id="cash"></b></small>
-<table id="tbl"></table><small>買＝做多/回補空單；賣＝賣出/放空（持股可為負）</small></div>
+<div class="tw"><table id="tbl"></table></div><small>買＝做多/回補空單；賣＝賣出/放空（持股可為負）</small></div>
 <div id="log" class="card" style="font-size:13px;max-height:120px;overflow:auto"></div>
 </div></div>
 <script>
 const PFX='stockduel-tw-',TICKS=30,START=100000;
-const TK=[["AAPL","蘋果"],["TSLA","特斯拉"],["NVDA","輝達"],["XOM","埃克森美孚"],["AMZN","亞馬遜"],["MSFT","微軟"],["GME","GameStop"],["JPM","摩根大通"]];
+const TK=[["AAPL","蘋果"],["TSLA","特斯拉"],["NVDA","輝達"],["AMZN","亞馬遜"],["META","Meta"],["GOOGL","谷歌"],["MSFT","微軟"],["NFLX","網飛"],["AMD","超微"],["INTC","英特爾"],["BA","波音"],["DIS","迪士尼"],["KO","可口可樂"],["PEP","百事"],["JPM","摩根大通"],["BAC","美國銀行"],["XOM","埃克森美孚"],["CVX","雪佛龍"],["COST","好市多"],["WMT","沃爾瑪"],["ORCL","甲骨文"],["CRM","Salesforce"],["ADBE","Adobe"],["PYPL","PayPal"],["UBER","Uber"],["COIN","Coinbase"],["PLTR","Palantir"],["SOFI","SoFi"],["SMCI","美超微"],["ARM","安謀"],["GME","GameStop"]];
 const NEWS=[["AAPL",.15,"🍎 AAPL 發表摺疊眼鏡手機，預購秒殺！"],["AAPL",-.12,"🍎 AAPL 執行長被拍到用對手手機"],["TSLA",.2,"🚗 TSLA 自駕車成功橫越沙漠"],["TSLA",-.18,"🚗 TSLA 召回 50 萬台：方向盤會唱歌"],["NVDA",.22,"💾 NVDA 拿下 AI 超大訂單"],["NVDA",-.15,"💾 NVDA 工廠停電，晶圓變鬆餅"],["XOM",.18,"🛢️ 產油國宣布減產"],["XOM",-.2,"🛢️ 人類發明喝水就能跑的引擎"],["AMZN",.1,"🛒 AMZN 黑色星期五營收創新高"],["MSFT",.16,"☁️ MSFT 宣布全球最大資料中心"],["MSFT",-.14,"☁️ MSFT 大當機 6 小時"],["GME",.4,"🐸 GME 被網紅喊上月球！"],["GME",-.35,"🐸 GME 網紅說他只是開玩笑"],["JPM",-.15,"🏦 JPM 被爆壞帳"],["*",.06,"🦅 聯準會意外降息，全面大漲！"],["*",-.07,"🐻 經濟衰退警報，全面重挫！"]];
 let peer,conn,isHost=false,me=0,S=null;
 const $=id=>document.getElementById(id);
