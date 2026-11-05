@@ -1,5 +1,5 @@
 /* Stock Duel service worker — caches app shell only; never breaks PeerJS/network play */
-const CACHE = 'stock-duel-shell-v1';
+const CACHE = 'stock-duel-shell-v2';
 const SHELL = [
   './',
   './index.html',
