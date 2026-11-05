@@ -90,4 +90,21 @@ function render(){if(!S)return;$('lobby').classList.add('hide');$('game').classL
  if(S.over){const a=S.snap[me],b=S.snap[1-me];$('news').innerHTML=a>b?'🏆 恭喜你獲勝！華爾街之狼就是你！':a<b?'😭 你輸了…下次記得停損！':'🤝 平手！英雄所見略同';}else $('news').textContent=S.news;{const tt=S.tv&&!S.over?S.tv.t:'';if(tt!==window._tv){window._tv=tt;const v=$('tv');v.innerHTML=tt?'<small class="live" style="color:#f85149">● LIVE</small> <small>盤前線索（可能是真的，也可能是騙人的）</small><div style="font-size:18px;margin-top:4px;overflow:hidden"><span class="tk">'+tt+'</span></div>':'';v.classList.remove('on');void v.offsetWidth;v.classList.add('on')}}
  $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;const lp=(window._lp=window._lp||{})[x.s],fc=lp==null||lp==x.p?'':lp<x.p?'fu':'fd';window._lp[x.s]=x.p;return '<tr class="'+fc+'"><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td><button onclick="trade(\''+x.s+'\',1)">買</button><button class="r" onclick="trade(\''+x.s+'\',-1)">賣</button><br><button class="pw" onclick="pw(\''+x.s+'\',1)">🚀</button><button class="pw" onclick="pw(\''+x.s+'\',-1)">💣</button><button class="pw" onclick="sn(\''+x.s+'\')">🎯</button></td></tr>'}).join('');
  $('log').innerHTML=S.log.filter(l=>l.w<0||l.w==me).map(l=>l.t).join('<br>')}
+</script>
+<button id="mute" onclick="SFX.toggle()" style="position:fixed;top:8px;right:8px;z-index:99;padding:6px 10px;border-radius:20px">🔊</button>
+<script>
+const SFX=(()=>{let ac,mg,on=localStorage.sdMute!='1',mt=null,step=0;
+function init(){if(ac)return;ac=new (window.AudioContext||window.webkitAudioContext)();mg=ac.createGain();mg.gain.value=on?1:0;mg.connect(ac.destination)}
+function tone(f,d,t='square',v=.15,at=0,f2){if(!ac)return;const o=ac.createOscillator(),g=ac.createGain(),n=ac.currentTime+at;o.type=t;o.frequency.setValueAtTime(f,n);if(f2)o.frequency.exponentialRampToValueAtTime(f2,n+d);g.gain.setValueAtTime(v,n);g.gain.exponentialRampToValueAtTime(.001,n+d);o.connect(g);g.connect(mg);o.start(n);o.stop(n+d+.02)}
+const bass=[110,110,131,98,110,147,131,98],mel=[440,0,523,0,659,587,523,0,392,0,440,523,0,494,440,0];
+function music(){if(mt)return;mt=setInterval(()=>{if(!on)return;const b=bass[(step>>1)%8];if(step%2==0)tone(b,.25,'triangle',.12);if(step%4==2)tone(2000,.03,'square',.03);const m=mel[step%16];if(m&&step%32>=16)tone(m,.18,'sine',.05);step++},150)}
+const S={click:()=>tone(800,.05,'square',.08),buy:()=>{tone(523,.08,'square',.1);tone(784,.12,'square',.1,.07)},sell:()=>{tone(659,.08,'square',.1);tone(392,.14,'square',.1,.07)},
+up:()=>tone(300,.4,'sawtooth',.12,0,1200),dn:()=>tone(1000,.5,'sawtooth',.12,0,80),snipe:()=>{tone(1500,.05,'square',.1);tone(1500,.05,'square',.1,.08);tone(200,.3,'triangle',.2,.16,60)},
+news:()=>{[880,1109,1319].forEach((f,i)=>tone(f,.15,'sine',.12,i*.12))},
+toggle(){init();on=!on;localStorage.sdMute=on?'0':'1';mg.gain.value=on?1:0;document.getElementById('mute').textContent=on?'🔊':'🔇'}};
+document.getElementById('mute').textContent=on?'🔊':'🔇';
+document.addEventListener('pointerdown',e=>{init();ac.resume();music();if(e.target.closest('button')&&e.target.id!='mute')S.click()},true);
+return S})();
+(()=>{const w=(n,f)=>{const o=window[n];window[n]=function(...a){try{f(...a)}catch(e){}return o.apply(this,a)}};
+w('trade',(s,d)=>d>0?SFX.buy():SFX.sell());w('pw',(s,v)=>v>0?SFX.up():SFX.dn());w('sn',()=>SFX.snipe());w('newsCard',()=>SFX.news());})();
 </script></body></html>
