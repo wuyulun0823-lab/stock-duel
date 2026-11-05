@@ -188,7 +188,7 @@ const L=up?U:D;S.tv={s:x.s,t:SRC[Math.random()*SRC.length|0]+'：'+x.s+' '+L[Mat
 S.pend.push({s:x.s,g:(up==real)?1:-1})}
 function newsCard(){const _r=Math.random()*13,_k=_r<5?1:_r<10?-1:0,_p=NEWS.filter(x=>Math.sign(x[1])==_k),n=_p[Math.random()*_p.length|0];S.news='第 '+S.round+' 回合快訊：'+n[2];S.st.forEach(x=>{x.d=0;x.nd=0});(S.pend||[]).forEach(q=>S.st.forEach(x=>{if(q.s=='*'||q.s==x.s)x.nd+=q.g*(Math.random()<.5?.15+Math.random()*.1:.04+Math.random()*.04)/28*(q.s=='*'?.5:1)}));S.pend=[];{const real=Math.random()<.55;S.pend.push({s:n[0],g:n[1]?(((n[1]>0)==real)?1:-1):(Math.random()<.5?1:-1)})}tvClue()}
 function tick(){if(S.over)return;if(S.brk>0){S.brk--;send();return}S.tick++;
- if(S.tick%2==0)S.st.forEach(x=>{let r=(Math.random()-.5)*.045+(x.d||0)+(x.nd||0);if(x.d)x.d*=.8;if(x.nd)x.nd*=.97;if(Math.random()<.03)r+=(Math.random()-.5)*.25;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2));(x.hist=x.hist||[]).push(x.p);});
+ if(S.tick%5==0)S.st.forEach(x=>{let r=(Math.random()-.5)*.045+(x.d||0)+(x.nd||0);if(x.d)x.d*=.8;if(x.nd)x.nd*=.97;if(Math.random()<.03)r+=(Math.random()-.5)*.25;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2));(x.hist=x.hist||[]).push(x.p);});
  if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];S.st.forEach(x=>{x.o=x.p;x.prev=x.hist;x.hist=[x.p]});if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard();S.brk=NEWS_S;if((S.round-1)%2==0){S.pl.forEach(p=>{p.up+=4;p.dn+=4;p.sn=(p.sn||0)+4});S.log.unshift({w:-1,t:'🎁 補給：雙方各獲得 🚀×4、💣×4、🎯×4'});S.log=S.log.slice(0,20)}}}send()}
 function eq(i){const p=S.pl[i];return p.cash+S.st.reduce((a,x)=>a+(p.pos[x.s]||0)*x.p,0)}
 function act(i,d){if(S.over||S.brk>0)return;const x=S.st.find(t=>t.s==d.s);if(!x)return;const q=d.q|0,p=S.pl[i];
