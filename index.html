@@ -26,7 +26,7 @@ button.r{background:#da3633}button.g{background:#30363d}input{font-size:20px;pad
 <div class="card"><span id="rd"></span><div class="bar"><div id="tb"></div></div></div>
 <div id="news" class="card news"></div>
 <div class="card">股數 <select id="qty"><option>10</option><option selected>50</option><option>100</option><option>500</option></select> <small>你的現金：<b id="cash"></b></small><br><small>道具剩餘：<b id="pwi"></b>（雙方持股互不公開，對手資產每回合結束才更新）</small>
-<div class="tw"><table id="tbl"></table></div><small>買＝做多/回補空單；賣＝賣出/放空（持股可為負）；🚀＝把該股拉抬一波、💣＝砸盤一波，開局各 2 個，每 2 回合再補 🚀×2、💣×2</small></div>
+<div class="tw"><table id="tbl"></table></div><small>買＝做多/回補空單；賣＝賣出/放空（持股可為負）；🚀＝把該股拉抬一波、💣＝砸盤一波，🎯＝狙擊，該股瞬間隨機跳 ±8～15%；開局 🚀×2、💣×2、🎯×1，每 2 回合再補 🚀×2、💣×2、🎯×1</small></div>
 <div id="log" class="card" style="font-size:13px;max-height:120px;overflow:auto"></div>
 </div></div>
 <script>
@@ -45,18 +45,20 @@ function join(){const code=$('code').value.trim().toUpperCase();if(code.length!=
   conn.on('open',()=>$('info').textContent='已連線，等待開始…');conn.on('data',d=>{S=d;render()});conn.on('close',()=>alert('房主已離線'))});
  peer.on('error',e=>$('info').textContent=e.type=='peer-unavailable'?'找不到房間':'錯誤：'+e.type)}
 function start(){S={round:1,R:+$('rounds').value,tick:0,news:'',over:false,log:[],
- st:TK.map(([s,n])=>({s,n,p:+(20+Math.random()*280).toFixed(2),o:0,d:0})),snap:[START,START],pl:[{cash:START,pos:{},up:2,dn:2},{cash:START,pos:{},up:2,dn:2}]};
+ st:TK.map(([s,n])=>({s,n,p:+(20+Math.random()*280).toFixed(2),o:0,d:0})),snap:[START,START],pl:[{cash:START,pos:{},up:2,dn:2,sn:1},{cash:START,pos:{},up:2,dn:2,sn:1}]};
  S.st.forEach(x=>x.o=x.p);newsCard();send();setInterval(tick,1000)}
 function newsCard(){const n=NEWS[Math.random()*NEWS.length|0];S.news='第 '+S.round+' 回合快訊：'+n[2];S.st.forEach(x=>{if(n[0]=='*'||n[0]==x.s)x.d=n[1]/8;else x.d=0})}
 function tick(){if(S.over)return;S.tick++;
  S.st.forEach(x=>{let r=(Math.random()-.5)*.045+(x.d||0);if(x.d)x.d*=.8;if(Math.random()<.03)r+=(Math.random()-.5)*.25;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2))});
- if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];S.st.forEach(x=>x.o=x.p);if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard();if((S.round-1)%2==0){S.pl.forEach(p=>{p.up+=2;p.dn+=2});S.log.unshift({w:-1,t:'🎁 補給：雙方各獲得 🚀×2、💣×2'});S.log=S.log.slice(0,20)}}}send()}
+ if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];S.st.forEach(x=>x.o=x.p);if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard();if((S.round-1)%2==0){S.pl.forEach(p=>{p.up+=2;p.dn+=2;p.sn=(p.sn||0)+1});S.log.unshift({w:-1,t:'🎁 補給：雙方各獲得 🚀×2、💣×2、🎯×1'});S.log=S.log.slice(0,20)}}}send()}
 function eq(i){const p=S.pl[i];return p.cash+S.st.reduce((a,x)=>a+(p.pos[x.s]||0)*x.p,0)}
 function act(i,d){if(S.over)return;const x=S.st.find(t=>t.s==d.s);if(!x)return;const q=d.q|0,p=S.pl[i];
+ if(d.sn){if(!(p.sn>0))return;p.sn--;const m=(Math.random()<.5?-1:1)*(.08+Math.random()*.07);x.p=+(x.p*(1+m)).toFixed(2);S.log.unshift({w:-1,t:'🎯 狙擊！'+x.s+' 瞬間'+(m>0?'暴漲 +':'暴跌 ')+(m*100).toFixed(1)+'%'});S.log=S.log.slice(0,20);send();return}
  if(d.pw){const k=d.pw>0?'up':'dn';if(p[k]<=0)return;p[k]--;x.p=+(x.p*(1+d.pw*.06)).toFixed(2);x.d=d.pw*.03;S.log.unshift({w:-1,t:(d.pw>0?'🚀 神秘大戶拉抬 ':'💣 神秘空頭砸盤 ')+x.s+'！'});S.log=S.log.slice(0,20);send();return}
  if(q>0&&p.cash<q*x.p)return; // 買不起
  if(q<0&&eq(i)<Math.abs(q)*x.p*0.5&&(p.pos[x.s]||0)<=0)return; // 放空保證金不足
  p.cash-=q*x.p;p.pos[x.s]=(p.pos[x.s]||0)+q;S.log.unshift({w:i,t:'你'+(q>0?' 買 ':' 賣 ')+Math.abs(q)+' '+x.s+' @'+x.p});S.log=S.log.slice(0,20);send()}
+function sn(s){if(isHost)act(0,{s,sn:1});else conn.send({s,sn:1})}
 function pw(s,v){if(isHost)act(0,{s,pw:v});else conn.send({s,pw:v})}
 function trade(s,dir){const q=dir*+$('qty').value;if(isHost)act(0,{s,q});else conn.send({s,q})}
 function send(){if(conn&&conn.open){const v=JSON.parse(JSON.stringify(S));v.pl[0]={cash:0,pos:{},up:0,dn:0};v.log=v.log.filter(l=>l.w!=0);conn.send(v)}render()}
@@ -64,8 +66,8 @@ function money(v){return '$'+Math.round(v).toLocaleString()}
 function render(){if(!S)return;$('lobby').classList.add('hide');$('game').classList.remove('hide');
  for(let i=0;i<2;i++){const op=i!=me,e=op?S.snap[i]:eq(i),pl=e-START;$('e'+i).textContent=money(e);$('p'+i).innerHTML='<span class="'+(pl>=0?'up':'dn')+'">'+(pl>=0?'+':'')+money(pl)+'</span>'+(op?'<br><small>'+(S.over?'最終資產':'🔒 上回合結算・持股不公開')+'</small>':'');$('n'+i).textContent=(i?'挑戰者':'房主')+(i==me?'（你）':'')}
  $('rd').textContent=S.over?'比賽結束':'第 '+S.round+'/'+S.R+' 回合・剩 '+(TICKS-S.tick)+' 秒';$('tb').style.width=(S.tick/TICKS*100)+'%';
- $('cash').textContent=money(S.pl[me].cash);$('pwi').textContent='🚀拉抬 '+S.pl[me].up+'・💣砸盤 '+S.pl[me].dn;
+ $('cash').textContent=money(S.pl[me].cash);$('pwi').textContent='🚀拉抬 '+S.pl[me].up+'・💣砸盤 '+S.pl[me].dn+'・🎯狙擊 '+(S.pl[me].sn||0);
  if(S.over){const a=S.snap[me],b=S.snap[1-me];$('news').innerHTML=a>b?'🏆 恭喜你獲勝！華爾街之狼就是你！':a<b?'😭 你輸了…下次記得停損！':'🤝 平手！英雄所見略同';}else $('news').textContent=S.news;
- $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;return '<tr><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td><button onclick="trade(\''+x.s+'\',1)">買</button><button class="r" onclick="trade(\''+x.s+'\',-1)">賣</button><br><button class="pw" onclick="pw(\''+x.s+'\',1)">🚀</button><button class="pw" onclick="pw(\''+x.s+'\',-1)">💣</button></td></tr>'}).join('');
+ $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;return '<tr><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td><button onclick="trade(\''+x.s+'\',1)">買</button><button class="r" onclick="trade(\''+x.s+'\',-1)">賣</button><br><button class="pw" onclick="pw(\''+x.s+'\',1)">🚀</button><button class="pw" onclick="pw(\''+x.s+'\',-1)">💣</button><button class="pw" onclick="sn(\''+x.s+'\')">🎯</button></td></tr>'}).join('');
  $('log').innerHTML=S.log.filter(l=>l.w<0||l.w==me).map(l=>l.t).join('<br>')}
 </script></body></html>
