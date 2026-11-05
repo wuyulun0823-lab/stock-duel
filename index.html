@@ -1,5 +1,5 @@
 <!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>美股對決 Stock Duel v2</title><meta http-equiv="Cache-Control" content="no-cache">
+<title>美股對決 Stock Duel v3</title><meta http-equiv="Cache-Control" content="no-cache">
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
 :root{--ease:cubic-bezier(.22,.68,0,1.2);--ease-out:cubic-bezier(.16,1,.3,1);--ease-soft:cubic-bezier(.4,0,.2,1)}
@@ -106,8 +106,26 @@ button:active{transform:translateY(4px) scale(.97)!important}
 .code{font-size:52px!important;color:#fde047!important}
 td{font-size:16px!important;border-bottom:1px solid #ffffff14!important}
 .bar{height:14px!important}.bar div{background:linear-gradient(90deg,#22d3ee,#a78bfa,#f472b6)!important;box-shadow:0 0 16px #a78bfa!important}
+
+/* STOCK-DETAIL */
+#sheet{position:fixed;inset:0;z-index:80;background:rgba(5,3,17,.72);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;padding:12px;animation:fadein .25s var(--ease-out)}
+#sheet.hide{display:none}
+.sheet-card{width:min(720px,100%);max-height:92vh;overflow:auto;background:linear-gradient(160deg,#1a1338ee,#0b0620f2);border:2px solid #a78bfa88;border-radius:24px 24px 16px 16px;padding:14px 14px 20px;box-shadow:0 -8px 40px #7c3aed55,0 0 0 1px #fff1 inset;animation:sheetUp .35s var(--ease-out)}
+@keyframes sheetUp{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+.sheet-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.sheet-head h2{margin:0;flex:1;font-size:26px;font-weight:900;background:linear-gradient(90deg,#22d3ee,#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent}
+#chart{width:100%;height:220px;display:block;border-radius:16px;background:linear-gradient(180deg,#0f172a,#020617);border:1px solid #ffffff1a;box-shadow:inset 0 0 30px #0008}
+.sheet-meta{display:flex;justify-content:space-between;align-items:flex-end;margin:10px 0 6px;gap:8px;flex-wrap:wrap}
+.sheet-price{font-size:32px;font-weight:900;letter-spacing:.5px}
+.sheet-chg{font-size:16px;font-weight:700}
+.sheet-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
+.sheet-actions button{flex:1;min-width:72px}
+.sheet-props{display:flex;gap:8px;margin-top:8px}
+.sheet-props button{flex:1;font-size:22px!important;padding:14px 8px!important}
+tr.stk{cursor:pointer}tr.stk:active{transform:scale(.995)}
+.chev{color:#a78bfa;font-weight:900;font-size:18px;opacity:.85}
 </style></head><body><div class="v2tick"><div id="v2t"></div></div><script>(function(){var t="AAPL TSLA NVDA AMZN META GOOGL MSFT NFLX AMD INTC DIS KO NKE SBUX JPM V BA UBER PYPL COIN".split(" "),h="";t.forEach(function(x){var c=(Math.random()*6-3).toFixed(2);h+='<span class="'+(c>=0?"u":"d")+'">'+x+" "+(c>=0?"▲+":"▼")+c+"%</span>"});document.getElementById("v2t").innerHTML=h+h})()</script><div class="wrap">
-<h1>📈 美股對決 Stock Duel <small style="font-size:14px">v2</small></h1>
+<h1>📈 美股對決 Stock Duel <small style="font-size:14px">v3</small></h1>
 <div id="lobby" class="card" style="text-align:center">
 <p>股名為真實美股，價格與新聞皆為虛構，與實際行情無關</p>
 <p>回合數 <select id="rounds"><option>3</option><option selected>5</option><option>8</option></select></p>
@@ -120,8 +138,27 @@ td{font-size:16px!important;border-bottom:1px solid #ffffff14!important}
 <div class="card"><span id="rd"></span><div class="bar"><div id="tb"></div></div></div>
 <div id="tv" class="card" style="background:#000;border:3px solid #555;color:#fff"></div><div id="news" class="card news"></div>
 <div class="card">股數 <select id="qty"><option>10</option><option selected>50</option><option>100</option><option>500</option></select> <small>你的現金：<b id="cash"></b></small><br><small>道具剩餘：<b id="pwi"></b>（雙方持股互不公開，對手資產每回合結束才更新）</small>
-<div class="tw"><table id="tbl"></table></div><small>買＝做多/回補空單；賣＝賣出/放空（持股可為負）；🚀＝把該股拉抬一波、💣＝砸盤一波，🎯＝狙擊，該股瞬間隨機跳 ±8～15%；開局 🚀×2、💣×2、🎯×1，每 2 回合再補 🚀×2、💣×2、🎯×1</small></div>
+<div class="tw"><table id="tbl"></table></div><small>點進任一檔可看走勢圖並交易／用道具。買＝做多/回補；賣＝賣出/放空；🚀拉抬、💣砸盤、🎯狙擊(±8～15%)；開局 🚀×2、💣×2、🎯×1，每 2 回合再補一次</small></div>
 <div id="log" class="card" style="font-size:13px;max-height:120px;overflow:auto"></div>
+
+<div id="sheet" class="hide" onclick="if(event.target.id==='sheet')closeStock()">
+<div class="sheet-card" onclick="event.stopPropagation()">
+<div class="sheet-head"><button class="g" onclick="closeStock()">← 返回</button><h2 id="dsyn"></h2><small id="dname"></small></div>
+<div class="sheet-meta"><div><div id="dprice" class="sheet-price"></div><div id="dchg" class="sheet-chg"></div></div><div style="text-align:right"><small>持有股數</small><div id="dhold" class="big" style="font-size:22px!important"></div><small>現金 <b id="dcash"></b></small></div></div>
+<canvas id="chart" width="680" height="220"></canvas>
+<small style="display:block;margin:6px 0 2px;color:#94a3b8">走勢為本局虛構價格 · 點擊下方交易或使用道具</small>
+<div class="sheet-actions">
+股數 <select id="dqty"><option>10</option><option selected>50</option><option>100</option><option>500</option></select>
+<button onclick="tradeSel(1)">買進</button>
+<button class="r" onclick="tradeSel(-1)">賣出</button>
+</div>
+<div class="sheet-props">
+<button class="pw" onclick="pwSel(1)">🚀 拉抬</button>
+<button class="pw" onclick="pwSel(-1)">💣 砸盤</button>
+<button class="pw" onclick="snSel()">🎯 狙擊</button>
+</div>
+<small id="dpwi" style="display:block;margin-top:8px;color:#94a3b8"></small>
+</div></div>
 </div></div>
 <script>
 const PFX='stockduel-tw-',TICKS=120,NEWS_S=8,START=100000;
@@ -139,8 +176,8 @@ function join(){const code=$('code').value.trim().toUpperCase();if(code.length!=
   conn.on('open',()=>$('info').textContent='已連線，等待開始…');conn.on('data',d=>{S=d;render()});conn.on('close',()=>alert('房主已離線'))});
  peer.on('error',e=>$('info').textContent=e.type=='peer-unavailable'?'找不到房間':'錯誤：'+e.type)}
 function start(){S={round:1,R:+$('rounds').value,tick:0,news:'',over:false,log:[],
- st:TK.map(([s,n])=>({s,n,p:+(20+Math.random()*280).toFixed(2),o:0,d:0})),snap:[START,START],pl:[{cash:START,pos:{},up:2,dn:2,sn:1},{cash:START,pos:{},up:2,dn:2,sn:1}]};
- S.st.forEach(x=>x.o=x.p);newsCard();S.brk=NEWS_S;send();setInterval(tick,1000)}
+ st:TK.map(([s,n])=>({s,n,p:+(20+Math.random()*280).toFixed(2),o:0,d:0,hist:[]})),snap:[START,START],pl:[{cash:START,pos:{},up:2,dn:2,sn:1},{cash:START,pos:{},up:2,dn:2,sn:1}]};
+ S.st.forEach(x=>{x.o=x.p;x.hist=[x.p]});newsCard();S.brk=NEWS_S;send();setInterval(tick,1000)}
 const ANCHOR='<div class="anc"><svg viewBox="0 0 140 120" width="140" height="120"><defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1e3a8a"/><stop offset="1" stop-color="#0b1020"/></linearGradient><linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd9b8"/><stop offset="1" stop-color="#e8b48a"/></linearGradient><linearGradient id="su" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a4252"/><stop offset="1" stop-color="#1b2029"/></linearGradient><linearGradient id="dk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f2937"/><stop offset="1" stop-color="#030712"/></linearGradient></defs><rect width="140" height="120" rx="8" fill="url(#sg)"/><g opacity=".35"><rect class="cty" x="6" y="40" width="10" height="45" fill="#60a5fa"/><rect class="cty" x="18" y="28" width="8" height="57" fill="#93c5fd"/><rect class="cty" x="112" y="34" width="9" height="51" fill="#60a5fa"/><rect class="cty" x="123" y="46" width="11" height="39" fill="#93c5fd"/></g><g class="bod"><path d="M38 96q2-34 32-36q30 2 32 36z" fill="url(#su)"/><path d="M62 60l8 10l8-10l-3 36h-10z" fill="#f8fafc"/><polygon points="70,64 66,72 70,92 74,72" fill="#dc2626"/><circle cx="88" cy="72" r="2" fill="#fbbf24"/><g class="hd"><rect x="64" y="50" width="12" height="12" fill="#e8b48a"/><ellipse cx="70" cy="38" rx="17" ry="19" fill="url(#sk)"/><ellipse cx="53" cy="40" rx="3" ry="4.5" fill="#e8b48a"/><ellipse cx="87" cy="40" rx="3" ry="4.5" fill="#e8b48a"/><path d="M52 34q2-20 18-20q17 0 19 20q-4-11-19-12q-12 1-18 12z" fill="#2b1d12"/><path d="M58 30q6-3 10 0M72 30q6-3 10 0" stroke="#2b1d12" stroke-width="1.6" fill="none" class="brw"/><g class="ey"><ellipse cx="63" cy="37" rx="2.4" ry="2.8" fill="#111"/><ellipse cx="77" cy="37" rx="2.4" ry="2.8" fill="#111"/><circle cx="63.8" cy="36" r=".8" fill="#fff"/><circle cx="77.8" cy="36" r=".8" fill="#fff"/></g><ellipse cx="59" cy="45" rx="3" ry="1.6" fill="#f87171" opacity=".35"/><ellipse cx="81" cy="45" rx="3" ry="1.6" fill="#f87171" opacity=".35"/><ellipse class="mo" cx="70" cy="48" rx="4.5" ry="2.2" fill="#7f1d1d"/></g><g class="arm"><path d="M96 74q10 2 14-8" stroke="url(#su)" stroke-width="8" stroke-linecap="round" fill="none"/><rect x="104" y="54" width="12" height="16" rx="2" fill="#f1f5f9"/><rect x="106" y="57" width="8" height="1.5" fill="#94a3b8"/><rect x="106" y="61" width="6" height="1.5" fill="#94a3b8"/></g></g><rect x="14" y="94" width="112" height="22" rx="3" fill="url(#dk)"/><rect x="14" y="94" width="112" height="2" fill="#38bdf8" class="glw"/><text x="70" y="109" fill="#7dd3fc" font-size="10" font-weight="700" letter-spacing="2" text-anchor="middle">WALL ST TV</text><circle class="rec" cx="126" cy="10" r="3.5" fill="#ef4444"/></svg></div>';
 function tvClue(){const x=S.st[Math.random()*S.st.length|0],up=Math.random()<.5,real=Math.random()<.55;
 const U=['財報大爆發！營收年增 87%','傳出被巨頭收購，溢價三成！','CEO 直播吃播宣布神祕新產品','分析師上調目標價至天際','獲得政府超大訂單'],D=['財報暴雷！獲利腰斬','傳 CFO 連夜搭機出境','遭監管機關突擊調查','工廠冒煙，產線停擺','大股東狂倒貨中'],SRC=['📺 華爾街晨間快報','📺 股市名嘴老王','📺 匿名內線爆料','📺 財經台獨家','📺 鄰居阿姨說'];
@@ -148,12 +185,12 @@ const L=up?U:D;S.tv={s:x.s,t:SRC[Math.random()*SRC.length|0]+'：'+x.s+' '+L[Mat
 x.d+=((up==real)?1:-1)*(0.4+Math.random()*.4)}
 function newsCard(){const n=NEWS[Math.random()*NEWS.length|0];S.news='第 '+S.round+' 回合快訊：'+n[2];S.st.forEach(x=>{if(n[0]=='*'||n[0]==x.s)x.d=n[1]/8;else x.d=0});tvClue()}
 function tick(){if(S.over)return;if(S.brk>0){S.brk--;send();return}S.tick++;
- if(S.tick%2==0)S.st.forEach(x=>{let r=(Math.random()-.5)*.045+(x.d||0);if(x.d)x.d*=.8;if(Math.random()<.03)r+=(Math.random()-.5)*.25;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2))});
+ if(S.tick%2==0)S.st.forEach(x=>{let r=(Math.random()-.5)*.045+(x.d||0);if(x.d)x.d*=.8;if(Math.random()<.03)r+=(Math.random()-.5)*.25;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2));(x.hist=x.hist||[]).push(x.p);if(x.hist.length>90)x.hist.shift()});
  if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];if(S.tv){S.log.unshift({w:-1,t:'🕵️ 盤前線索「'+S.tv.s+'」結果：'+(S.tv.real?'✅ 消息屬實':'❌ 消息不實')})}S.st.forEach(x=>x.o=x.p);if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard();S.brk=NEWS_S;if((S.round-1)%2==0){S.pl.forEach(p=>{p.up+=2;p.dn+=2;p.sn=(p.sn||0)+1});S.log.unshift({w:-1,t:'🎁 補給：雙方各獲得 🚀×2、💣×2、🎯×1'});S.log=S.log.slice(0,20)}}}send()}
 function eq(i){const p=S.pl[i];return p.cash+S.st.reduce((a,x)=>a+(p.pos[x.s]||0)*x.p,0)}
 function act(i,d){if(S.over||S.brk>0)return;const x=S.st.find(t=>t.s==d.s);if(!x)return;const q=d.q|0,p=S.pl[i];
- if(d.sn){if(!(p.sn>0))return;p.sn--;const m=(Math.random()<.5?-1:1)*(.08+Math.random()*.07);x.p=+(x.p*(1+m)).toFixed(2);S.log.unshift({w:-1,t:'🎯 狙擊！'+x.s+' 瞬間'+(m>0?'暴漲 +':'暴跌 ')+(m*100).toFixed(1)+'%'});S.log=S.log.slice(0,20);send();return}
- if(d.pw){const k=d.pw>0?'up':'dn';if(p[k]<=0)return;p[k]--;x.p=+(x.p*(1+d.pw*.06)).toFixed(2);x.d=d.pw*.03;S.log.unshift({w:-1,t:(d.pw>0?'🚀 神秘大戶拉抬 ':'💣 神秘空頭砸盤 ')+x.s+'！'});S.log=S.log.slice(0,20);send();return}
+ if(d.sn){if(!(p.sn>0))return;p.sn--;const m=(Math.random()<.5?-1:1)*(.08+Math.random()*.07);x.p=+(x.p*(1+m)).toFixed(2);(x.hist=x.hist||[]).push(x.p);if(x.hist.length>90)x.hist.shift();S.log.unshift({w:-1,t:'🎯 狙擊！'+x.s+' 瞬間'+(m>0?'暴漲 +':'暴跌 ')+(m*100).toFixed(1)+'%'});S.log=S.log.slice(0,20);send();return}
+ if(d.pw){const k=d.pw>0?'up':'dn';if(p[k]<=0)return;p[k]--;x.p=+(x.p*(1+d.pw*.06)).toFixed(2);x.d=d.pw*.03;(x.hist=x.hist||[]).push(x.p);if(x.hist.length>90)x.hist.shift();S.log.unshift({w:-1,t:(d.pw>0?'🚀 神秘大戶拉抬 ':'💣 神秘空頭砸盤 ')+x.s+'！'});S.log=S.log.slice(0,20);send();return}
  if(q>0&&p.cash<q*x.p)return; // 買不起
  if(q<0&&eq(i)<Math.abs(q)*x.p*0.5&&(p.pos[x.s]||0)<=0)return; // 放空保證金不足
  p.cash-=q*x.p;p.pos[x.s]=(p.pos[x.s]||0)+q;S.log.unshift({w:i,t:'你'+(q>0?' 買 ':' 賣 ')+Math.abs(q)+' '+x.s+' @'+x.p});S.log=S.log.slice(0,20);send()}
@@ -161,14 +198,35 @@ function sn(s){if(isHost)act(0,{s,sn:1});else conn.send({s,sn:1})}
 function pw(s,v){if(isHost)act(0,{s,pw:v});else conn.send({s,pw:v})}
 function trade(s,dir){const q=dir*+$('qty').value;if(isHost)act(0,{s,q});else conn.send({s,q})}
 function send(){if(conn&&conn.open){const v=JSON.parse(JSON.stringify(S));v.pl[0]={cash:0,pos:{},up:0,dn:0};v.log=v.log.filter(l=>l.w!=0);conn.send(v)}render()}
+
+let sel=null;
+function openStock(s){sel=s;try{$('dqty').value=$('qty').value}catch(e){}$('sheet').classList.remove('hide');try{SFX.click()}catch(e){}render()}
+function closeStock(){sel=null;$('sheet').classList.add('hide')}
+function tradeSel(dir){if(!sel)return;const q=dir*+$('dqty').value;if(isHost)act(0,{s:sel,q});else conn.send({s:sel,q});try{dir>0?SFX.buy():SFX.sell()}catch(e){}}
+function pwSel(v){if(!sel)return;pw(sel,v)}
+function snSel(){if(!sel)return;sn(sel)}
+function drawChart(x){const c=$('chart');if(!c)return;const ctx=c.getContext('2d'),W=c.width,H=c.height;ctx.clearRect(0,0,W,H);
+ const data=(x.hist&&x.hist.length)?x.hist.slice():[x.o||x.p,x.p];
+ let mn=Math.min(...data),mx=Math.max(...data);if(mx===mn){mx+=1;mn-=1}const pad=(mx-mn)*.12||1;mn-=pad;mx+=pad;
+ const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#22d3ee33');g.addColorStop(1,'#22d3ee00');
+ ctx.beginPath();data.forEach((p,i)=>{const X=10+(W-20)*(i/Math.max(1,data.length-1)),Y=H-14-((p-mn)/(mx-mn))*(H-28);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});
+ const lastX=10+(W-20),lastY=H-14-((data[data.length-1]-mn)/(mx-mn))*(H-28);
+ ctx.lineTo(lastX,H-8);ctx.lineTo(10,H-8);ctx.closePath();ctx.fillStyle=g;ctx.fill();
+ ctx.beginPath();data.forEach((p,i)=>{const X=10+(W-20)*(i/Math.max(1,data.length-1)),Y=H-14-((p-mn)/(mx-mn))*(H-28);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});
+ const up=data[data.length-1]>=data[0];ctx.strokeStyle=up?'#4ade80':'#fb7185';ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.shadowColor=up?'#4ade8088':'#fb718588';ctx.shadowBlur=8;ctx.stroke();ctx.shadowBlur=0;
+ ctx.beginPath();ctx.arc(lastX,lastY,4.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=up?'#4ade80':'#fb7185';ctx.lineWidth=2;ctx.stroke();
+ ctx.fillStyle='#94a3b8';ctx.font='11px ui-monospace,monospace';ctx.fillText(mx.toFixed(2),14,16);ctx.fillText(mn.toFixed(2),14,H-6);
+}
 function money(v){return '$'+Math.round(v).toLocaleString()}
 function render(){if(!S)return;$('lobby').classList.add('hide');$('game').classList.remove('hide');
  for(let i=0;i<2;i++){const op=i!=me,e=op?S.snap[i]:eq(i),pl=e-START;$('e'+i).textContent=money(e);$('p'+i).innerHTML='<span class="'+(pl>=0?'up':'dn')+'">'+(pl>=0?'+':'')+money(pl)+'</span>'+(op?'<br><small>'+(S.over?'最終資產':'🔒 上回合結算・持股不公開')+'</small>':'');$('n'+i).textContent=(i?'挑戰者':'房主')+(i==me?'（你）':'')}
  $('rd').textContent=S.over?'比賽結束':S.brk>0?'📺 第 '+S.round+'/'+S.R+' 回合・新聞播報中… '+S.brk+' 秒後開盤':'第 '+S.round+'/'+S.R+' 回合・剩 '+(TICKS-S.tick)+' 秒';$('tb').style.width=(S.tick/TICKS*100)+'%';
  $('cash').textContent=money(S.pl[me].cash);$('pwi').textContent='🚀拉抬 '+S.pl[me].up+'・💣砸盤 '+S.pl[me].dn+'・🎯狙擊 '+(S.pl[me].sn||0);
  if(S.over){const a=S.snap[me],b=S.snap[1-me];$('news').innerHTML=a>b?'🏆 恭喜你獲勝！華爾街之狼就是你！':a<b?'😭 你輸了…下次記得停損！':'🤝 平手！英雄所見略同';}else $('news').textContent=S.news;{const tt=S.tv&&!S.over?S.tv.t+(S.brk>0?'#b':''):'';if(tt!==window._tv){window._tv=tt;const v=$('tv');v.innerHTML=tt?(S.brk>0?ANCHOR:'')+'<small class="live" style="color:#f85149">● LIVE</small> <small>盤前快訊</small><div style="font-size:18px;margin-top:4px;overflow:hidden"><span class="tk">'+tt+'</span></div>':'';v.classList.remove('on');void v.offsetWidth;v.classList.add('on')}}
- $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;const lp=(window._lp=window._lp||{})[x.s],fc=lp==null||lp==x.p?'':lp<x.p?'fu':'fd';window._lp[x.s]=x.p;return '<tr class="'+fc+'"><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td><button onclick="trade(\''+x.s+'\',1)">買</button><button class="r" onclick="trade(\''+x.s+'\',-1)">賣</button><br><button class="pw" onclick="pw(\''+x.s+'\',1)">🚀</button><button class="pw" onclick="pw(\''+x.s+'\',-1)">💣</button><button class="pw" onclick="sn(\''+x.s+'\')">🎯</button></td></tr>'}).join('');
- $('log').innerHTML=S.log.filter(l=>l.w<0||l.w==me).map(l=>l.t).join('<br>')}
+ $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;const lp=(window._lp=window._lp||{})[x.s],fc=lp==null||lp==x.p?'':lp<x.p?'fu':'fd';window._lp[x.s]=x.p;return '<tr class="stk '+fc+'" onclick="openStock(\''+x.s+'\')"><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td class="chev">走勢 ›</td></tr>'}).join('');
+ $('log').innerHTML=S.log.filter(l=>l.w<0||l.w==me).map(l=>l.t).join('<br>');
+ if(sel){const x=S.st.find(t=>t.s==sel);if(!x){closeStock()}else{const c=(x.p/x.o-1)*100;$('dsyn').textContent=x.s;$('dname').textContent=x.n;$('dprice').textContent=x.p.toFixed(2);$('dprice').className='sheet-price '+(c>=0?'up':'dn');$('dchg').innerHTML='<span class="'+(c>=0?'up':'dn')+'">'+(c>=0?'▲ +':'▼ ')+c.toFixed(2)+'%</span> · 開盤 '+x.o.toFixed(2);$('dhold').textContent=S.pl[me].pos[x.s]||0;$('dcash').textContent=money(S.pl[me].cash);$('dpwi').textContent='道具剩餘：🚀 '+S.pl[me].up+'　💣 '+S.pl[me].dn+'　🎯 '+(S.pl[me].sn||0)+(S.brk>0||S.over?'（新聞／結束中無法操作）':'');drawChart(x);$('sheet').classList.remove('hide')}}
+}
 </script>
 <button id="mute" onclick="SFX.toggle()" style="position:fixed;top:8px;right:8px;z-index:99;padding:6px 10px;border-radius:20px">🔊</button>
 <script>
