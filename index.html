@@ -12,6 +12,22 @@ button.r{background:#da3633}button.g{background:#30363d}input{font-size:20px;pad
 .up{color:#3fb950}.dn{color:#f85149}table{width:100%;border-collapse:collapse}td{padding:6px 3px;border-bottom:1px solid #222;font-size:15px}
 .news{background:#3a2a00;border-color:#d29922;font-weight:bold}.bar{height:10px;background:#30363d;border-radius:5px;overflow:hidden}.bar div{height:100%;background:#1f6feb}
 .code{font-size:36px;letter-spacing:6px;color:#d29922;text-align:center}.hide{display:none}.pw{background:#30363d;padding:4px 8px;font-size:14px}small{color:#8b949e}
+
+.card{transition:transform .2s,box-shadow .3s;box-shadow:0 2px 10px #0006}
+.hud .card{background:linear-gradient(160deg,#1c2330,#12161d)}.hud .card:hover{transform:translateY(-2px)}
+button{transition:transform .1s,filter .2s}button:active{transform:scale(.94)}button:hover{filter:brightness(1.15)}
+#tv{position:relative;overflow:hidden;background:linear-gradient(#111,#000)!important;border-radius:14px}
+#tv:empty{display:none}
+#tv .tk{white-space:nowrap;display:inline-block;animation:mq 12s linear infinite;padding-left:100%}
+#tv.on{animation:tvon .5s ease-out}
+@keyframes tvon{0%{transform:scaleY(.02);filter:brightness(3)}60%{transform:scaleY(1.05)}100%{transform:none}}
+@keyframes mq{to{transform:translateX(-100%)}}
+#tv::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(#fff0 0 2px,#ffffff08 2px 3px);pointer-events:none}
+.live{animation:bl 1s steps(2) infinite}@keyframes bl{50%{opacity:.3}}
+tr{transition:background .8s}tr.fu{animation:fu .9s}tr.fd{animation:fd .9s}
+@keyframes fu{0%{background:#3fb95055}100%{background:none}}@keyframes fd{0%{background:#f8514955}100%{background:none}}
+.news{animation:fadein .4s}@keyframes fadein{from{opacity:0;transform:translateY(-6px)}}
+@media(max-width:600px){body{font-size:14px}td{font-size:13px;padding:5px 2px}button{padding:8px 10px;font-size:14px}.big{font-size:18px}.hud{gap:4px}}
 </style></head><body><div class="wrap">
 <h1>📈 美股對決 Stock Duel</h1>
 <div id="lobby" class="card" style="text-align:center">
@@ -71,7 +87,7 @@ function render(){if(!S)return;$('lobby').classList.add('hide');$('game').classL
  for(let i=0;i<2;i++){const op=i!=me,e=op?S.snap[i]:eq(i),pl=e-START;$('e'+i).textContent=money(e);$('p'+i).innerHTML='<span class="'+(pl>=0?'up':'dn')+'">'+(pl>=0?'+':'')+money(pl)+'</span>'+(op?'<br><small>'+(S.over?'最終資產':'🔒 上回合結算・持股不公開')+'</small>':'');$('n'+i).textContent=(i?'挑戰者':'房主')+(i==me?'（你）':'')}
  $('rd').textContent=S.over?'比賽結束':'第 '+S.round+'/'+S.R+' 回合・剩 '+(TICKS-S.tick)+' 秒';$('tb').style.width=(S.tick/TICKS*100)+'%';
  $('cash').textContent=money(S.pl[me].cash);$('pwi').textContent='🚀拉抬 '+S.pl[me].up+'・💣砸盤 '+S.pl[me].dn+'・🎯狙擊 '+(S.pl[me].sn||0);
- if(S.over){const a=S.snap[me],b=S.snap[1-me];$('news').innerHTML=a>b?'🏆 恭喜你獲勝！華爾街之狼就是你！':a<b?'😭 你輸了…下次記得停損！':'🤝 平手！英雄所見略同';}else $('news').textContent=S.news;$('tv').innerHTML=S.tv&&!S.over?'<small style="color:#f85149">● LIVE 盤前線索（可能是真的，也可能是騙人的）</small><div style="font-size:18px;margin-top:4px">'+S.tv.t+'</div>':'';
- $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;return '<tr><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td><button onclick="trade(\''+x.s+'\',1)">買</button><button class="r" onclick="trade(\''+x.s+'\',-1)">賣</button><br><button class="pw" onclick="pw(\''+x.s+'\',1)">🚀</button><button class="pw" onclick="pw(\''+x.s+'\',-1)">💣</button><button class="pw" onclick="sn(\''+x.s+'\')">🎯</button></td></tr>'}).join('');
+ if(S.over){const a=S.snap[me],b=S.snap[1-me];$('news').innerHTML=a>b?'🏆 恭喜你獲勝！華爾街之狼就是你！':a<b?'😭 你輸了…下次記得停損！':'🤝 平手！英雄所見略同';}else $('news').textContent=S.news;{const tt=S.tv&&!S.over?S.tv.t:'';if(tt!==window._tv){window._tv=tt;const v=$('tv');v.innerHTML=tt?'<small class="live" style="color:#f85149">● LIVE</small> <small>盤前線索（可能是真的，也可能是騙人的）</small><div style="font-size:18px;margin-top:4px;overflow:hidden"><span class="tk">'+tt+'</span></div>':'';v.classList.remove('on');void v.offsetWidth;v.classList.add('on')}}
+ $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;const lp=(window._lp=window._lp||{})[x.s],fc=lp==null||lp==x.p?'':lp<x.p?'fu':'fd';window._lp[x.s]=x.p;return '<tr class="'+fc+'"><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td><button onclick="trade(\''+x.s+'\',1)">買</button><button class="r" onclick="trade(\''+x.s+'\',-1)">賣</button><br><button class="pw" onclick="pw(\''+x.s+'\',1)">🚀</button><button class="pw" onclick="pw(\''+x.s+'\',-1)">💣</button><button class="pw" onclick="sn(\''+x.s+'\')">🎯</button></td></tr>'}).join('');
  $('log').innerHTML=S.log.filter(l=>l.w<0||l.w==me).map(l=>l.t).join('<br>')}
 </script></body></html>
