@@ -138,15 +138,17 @@ tr.stk{cursor:pointer}tr.stk:active{transform:scale(.995)}
 <div class="card"><span id="rd"></span><div class="bar"><div id="tb"></div></div></div>
 <div id="tv" class="card" style="background:#000;border:3px solid #555;color:#fff"></div><div id="news" class="card news"></div>
 <div class="card">股數 <select id="qty"><option>10</option><option selected>50</option><option>100</option><option>500</option></select> <small>你的現金：<b id="cash"></b></small><br><small>道具剩餘：<b id="pwi"></b>（雙方持股互不公開，對手資產每回合結束才更新）</small>
-<div class="tw"><table id="tbl"></table></div><small>點進任一檔可看走勢圖並交易／用道具。買＝做多/回補；賣＝賣出/放空；🚀拉抬、💣砸盤、🎯狙擊(±8～15%)；開局 🚀×2、💣×2、🎯×1，每 2 回合再補一次</small></div>
+<div class="tw"><table id="tbl"></table></div><small>點進任一檔可看走勢圖並交易／用道具。買＝做多/回補；賣＝賣出/放空；🚀拉抬、💣砸盤、🎯狙擊(±8～15%)；開局 🚀×4、💣×4、🎯×4，每 2 回合再補一次</small></div>
 <div id="log" class="card" style="font-size:13px;max-height:120px;overflow:auto"></div>
 
+<div id="inv" class="hide" onclick="if(event.target.id==='inv')closeInv()" style="position:fixed;inset:0;z-index:120;background:rgba(5,3,17,.78);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:14px"><div class="sheet-card" style="max-width:520px"><div class="sheet-head"><button class="g" onclick="closeInv()">← 返回</button><h2>🎒 道具背包</h2></div><div id="invb" style="display:grid;gap:10px"></div><small style="display:block;margin-top:10px;color:#94a3b8">每 2 回合補給：🚀×4、💣×4、🎯×4，未用完會累積。在個股走勢圖頁使用。</small></div></div>
+<style>#inv.hide{display:none!important}.ic{display:flex;align-items:center;gap:14px;padding:14px;border-radius:18px;background:linear-gradient(135deg,#ffffff14,#ffffff05);border:1px solid #ffffff22;box-shadow:0 6px 20px #0006}.ic .e{font-size:42px;filter:drop-shadow(0 0 10px #a78bfa)}.ic .n{flex:1}.ic .n b{font-size:18px}.ic .n small{display:block;color:#94a3b8}.ic .c{font-size:30px;font-weight:900;min-width:56px;text-align:center;padding:6px 10px;border-radius:14px;background:#7c3aed55;border:1px solid #a78bfa}.ic.z{opacity:.4}</style>
 <div id="sheet" class="hide" onclick="if(event.target.id==='sheet')closeStock()">
 <div class="sheet-card" onclick="event.stopPropagation()">
 <div class="sheet-head"><button class="g" onclick="closeStock()">← 返回</button><h2 id="dsyn"></h2><small id="dname"></small></div>
 <div class="sheet-meta"><div><div id="dprice" class="sheet-price"></div><div id="dchg" class="sheet-chg"></div></div><div style="text-align:right"><small>持有股數</small><div id="dhold" class="big" style="font-size:22px!important"></div><small>現金 <b id="dcash"></b></small></div></div>
 <canvas id="chart" width="680" height="220"></canvas>
-<small style="display:block;margin:6px 0 2px;color:#94a3b8">走勢為本局虛構價格 · 點擊下方交易或使用道具</small>
+<small style="display:block;margin:6px 0 2px;color:#94a3b8">走勢：前一天＋今天（虛線分隔）· 點下方交易或使用道具</small>
 <div class="sheet-actions">
 股數 <select id="dqty"><option>10</option><option selected>50</option><option>100</option><option>500</option></select>
 <button onclick="tradeSel(1)">買進</button>
@@ -157,7 +159,7 @@ tr.stk{cursor:pointer}tr.stk:active{transform:scale(.995)}
 <button class="pw" onclick="pwSel(-1)">💣 砸盤</button>
 <button class="pw" onclick="snSel()">🎯 狙擊</button>
 </div>
-<small id="dpwi" style="display:block;margin-top:8px;color:#94a3b8"></small>
+<button class="g" style="width:100%;margin-top:8px" onclick="openInv()">🎒 道具背包 <span id="dpwi"></span></button>
 </div></div>
 </div></div>
 <script>
@@ -176,8 +178,8 @@ function join(){const code=$('code').value.trim().toUpperCase();if(code.length!=
   conn.on('open',()=>$('info').textContent='已連線，等待開始…');conn.on('data',d=>{S=d;render()});conn.on('close',()=>alert('房主已離線'))});
  peer.on('error',e=>$('info').textContent=e.type=='peer-unavailable'?'找不到房間':'錯誤：'+e.type)}
 function start(){S={pend:[],round:1,R:+$('rounds').value,tick:0,news:'',over:false,log:[],
- st:TK.map(([s,n])=>({s,n,p:+(20+Math.random()*280).toFixed(2),o:0,d:0,hist:[]})),snap:[START,START],pl:[{cash:START,pos:{},up:2,dn:2,sn:1},{cash:START,pos:{},up:2,dn:2,sn:1}]};
- S.st.forEach(x=>{x.o=x.p;x.hist=[x.p]});newsCard();S.brk=NEWS_S;send();setInterval(tick,1000)}
+ st:TK.map(([s,n])=>({s,n,p:+(20+Math.random()*280).toFixed(2),o:0,d:0,hist:[]})),snap:[START,START],pl:[{cash:START,pos:{},up:4,dn:4,sn:4},{cash:START,pos:{},up:4,dn:4,sn:4}]};
+ S.st.forEach(x=>{let v=x.p*(0.85+Math.random()*.3),pv=[];for(let i=0;i<60;i++){v=Math.max(1,v*(1+(Math.random()-.5)*.045));pv.push(+v.toFixed(2))}const k=x.p/pv[59];x.prev=pv.map(q=>+(q*k).toFixed(2));x.o=x.p;x.hist=[x.p]});newsCard();S.brk=NEWS_S;send();setInterval(tick,1000)}
 const ANCHOR='<div class="anc"><svg viewBox="0 0 140 120" width="140" height="120"><defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1e3a8a"/><stop offset="1" stop-color="#0b1020"/></linearGradient><linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd9b8"/><stop offset="1" stop-color="#e8b48a"/></linearGradient><linearGradient id="su" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a4252"/><stop offset="1" stop-color="#1b2029"/></linearGradient><linearGradient id="dk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f2937"/><stop offset="1" stop-color="#030712"/></linearGradient></defs><rect width="140" height="120" rx="8" fill="url(#sg)"/><g opacity=".35"><rect class="cty" x="6" y="40" width="10" height="45" fill="#60a5fa"/><rect class="cty" x="18" y="28" width="8" height="57" fill="#93c5fd"/><rect class="cty" x="112" y="34" width="9" height="51" fill="#60a5fa"/><rect class="cty" x="123" y="46" width="11" height="39" fill="#93c5fd"/></g><g class="bod"><path d="M38 96q2-34 32-36q30 2 32 36z" fill="url(#su)"/><path d="M62 60l8 10l8-10l-3 36h-10z" fill="#f8fafc"/><polygon points="70,64 66,72 70,92 74,72" fill="#dc2626"/><circle cx="88" cy="72" r="2" fill="#fbbf24"/><g class="hd"><rect x="64" y="50" width="12" height="12" fill="#e8b48a"/><ellipse cx="70" cy="38" rx="17" ry="19" fill="url(#sk)"/><ellipse cx="53" cy="40" rx="3" ry="4.5" fill="#e8b48a"/><ellipse cx="87" cy="40" rx="3" ry="4.5" fill="#e8b48a"/><path d="M52 34q2-20 18-20q17 0 19 20q-4-11-19-12q-12 1-18 12z" fill="#2b1d12"/><path d="M58 30q6-3 10 0M72 30q6-3 10 0" stroke="#2b1d12" stroke-width="1.6" fill="none" class="brw"/><g class="ey"><ellipse cx="63" cy="37" rx="2.4" ry="2.8" fill="#111"/><ellipse cx="77" cy="37" rx="2.4" ry="2.8" fill="#111"/><circle cx="63.8" cy="36" r=".8" fill="#fff"/><circle cx="77.8" cy="36" r=".8" fill="#fff"/></g><ellipse cx="59" cy="45" rx="3" ry="1.6" fill="#f87171" opacity=".35"/><ellipse cx="81" cy="45" rx="3" ry="1.6" fill="#f87171" opacity=".35"/><ellipse class="mo" cx="70" cy="48" rx="4.5" ry="2.2" fill="#7f1d1d"/></g><g class="arm"><path d="M96 74q10 2 14-8" stroke="url(#su)" stroke-width="8" stroke-linecap="round" fill="none"/><rect x="104" y="54" width="12" height="16" rx="2" fill="#f1f5f9"/><rect x="106" y="57" width="8" height="1.5" fill="#94a3b8"/><rect x="106" y="61" width="6" height="1.5" fill="#94a3b8"/></g></g><rect x="14" y="94" width="112" height="22" rx="3" fill="url(#dk)"/><rect x="14" y="94" width="112" height="2" fill="#38bdf8" class="glw"/><text x="70" y="109" fill="#7dd3fc" font-size="10" font-weight="700" letter-spacing="2" text-anchor="middle">WALL ST TV</text><circle class="rec" cx="126" cy="10" r="3.5" fill="#ef4444"/></svg></div>';
 function tvClue(){const x=S.st[Math.random()*S.st.length|0],up=Math.random()<.5,real=Math.random()<.55;
 const U=['財報大爆發！營收年增 87%','傳出被巨頭收購，溢價三成！','CEO 直播吃播宣布神祕新產品','分析師上調目標價至天際','獲得政府超大訂單'],D=['財報暴雷！獲利腰斬','傳 CFO 連夜搭機出境','遭監管機關突擊調查','工廠冒煙，產線停擺','大股東狂倒貨中'],SRC=['📺 華爾街晨間快報','📺 股市名嘴老王','📺 匿名內線爆料','📺 財經台獨家','📺 鄰居阿姨說'];
@@ -185,12 +187,12 @@ const L=up?U:D;S.tv={s:x.s,t:SRC[Math.random()*SRC.length|0]+'：'+x.s+' '+L[Mat
 S.pend.push({s:x.s,g:(up==real)?1:-1})}
 function newsCard(){const _r=Math.random()*13,_k=_r<5?1:_r<10?-1:0,_p=NEWS.filter(x=>Math.sign(x[1])==_k),n=_p[Math.random()*_p.length|0];S.news='第 '+S.round+' 回合快訊：'+n[2];S.st.forEach(x=>{x.d=0;x.nd=0});(S.pend||[]).forEach(q=>S.st.forEach(x=>{if(q.s=='*'||q.s==x.s)x.nd+=q.g*(Math.random()<.5?.15+Math.random()*.1:.04+Math.random()*.04)/28*(q.s=='*'?.5:1)}));S.pend=[];{const real=Math.random()<.55;S.pend.push({s:n[0],g:n[1]?(((n[1]>0)==real)?1:-1):(Math.random()<.5?1:-1)})}tvClue()}
 function tick(){if(S.over)return;if(S.brk>0){S.brk--;send();return}S.tick++;
- if(S.tick%2==0)S.st.forEach(x=>{let r=(Math.random()-.5)*.045+(x.d||0)+(x.nd||0);if(x.d)x.d*=.8;if(x.nd)x.nd*=.97;if(Math.random()<.03)r+=(Math.random()-.5)*.25;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2));(x.hist=x.hist||[]).push(x.p);if(x.hist.length>90)x.hist.shift()});
- if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];S.st.forEach(x=>x.o=x.p);if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard();S.brk=NEWS_S;if((S.round-1)%2==0){S.pl.forEach(p=>{p.up+=2;p.dn+=2;p.sn=(p.sn||0)+1});S.log.unshift({w:-1,t:'🎁 補給：雙方各獲得 🚀×2、💣×2、🎯×1'});S.log=S.log.slice(0,20)}}}send()}
+ if(S.tick%2==0)S.st.forEach(x=>{let r=(Math.random()-.5)*.045+(x.d||0)+(x.nd||0);if(x.d)x.d*=.8;if(x.nd)x.nd*=.97;if(Math.random()<.03)r+=(Math.random()-.5)*.25;x.p=Math.max(1,+(x.p*(1+r)).toFixed(2));(x.hist=x.hist||[]).push(x.p);});
+ if(S.tick>=TICKS){S.snap=[eq(0),eq(1)];S.st.forEach(x=>{x.o=x.p;x.prev=x.hist;x.hist=[x.p]});if(S.round>=S.R){S.over=true}else{S.round++;S.tick=0;newsCard();S.brk=NEWS_S;if((S.round-1)%2==0){S.pl.forEach(p=>{p.up+=4;p.dn+=4;p.sn=(p.sn||0)+4});S.log.unshift({w:-1,t:'🎁 補給：雙方各獲得 🚀×4、💣×4、🎯×4'});S.log=S.log.slice(0,20)}}}send()}
 function eq(i){const p=S.pl[i];return p.cash+S.st.reduce((a,x)=>a+(p.pos[x.s]||0)*x.p,0)}
 function act(i,d){if(S.over||S.brk>0)return;const x=S.st.find(t=>t.s==d.s);if(!x)return;const q=d.q|0,p=S.pl[i];
- if(d.sn){if(!(p.sn>0))return;p.sn--;const m=(Math.random()<.5?-1:1)*(.08+Math.random()*.07);x.p=+(x.p*(1+m)).toFixed(2);(x.hist=x.hist||[]).push(x.p);if(x.hist.length>90)x.hist.shift();S.log.unshift({w:-1,t:'🎯 狙擊！'+x.s+' 瞬間'+(m>0?'暴漲 +':'暴跌 ')+(m*100).toFixed(1)+'%'});S.log=S.log.slice(0,20);send();return}
- if(d.pw){const k=d.pw>0?'up':'dn';if(p[k]<=0)return;p[k]--;x.p=+(x.p*(1+d.pw*.06)).toFixed(2);x.d=d.pw*.03;(x.hist=x.hist||[]).push(x.p);if(x.hist.length>90)x.hist.shift();S.log.unshift({w:-1,t:(d.pw>0?'🚀 神秘大戶拉抬 ':'💣 神秘空頭砸盤 ')+x.s+'！'});S.log=S.log.slice(0,20);send();return}
+ if(d.sn){if(!(p.sn>0))return;p.sn--;const m=(Math.random()<.5?-1:1)*(.08+Math.random()*.07);x.p=+(x.p*(1+m)).toFixed(2);(x.hist=x.hist||[]).push(x.p);S.log.unshift({w:-1,t:'🎯 狙擊！'+x.s+' 瞬間'+(m>0?'暴漲 +':'暴跌 ')+(m*100).toFixed(1)+'%'});S.log=S.log.slice(0,20);send();return}
+ if(d.pw){const k=d.pw>0?'up':'dn';if(p[k]<=0)return;p[k]--;x.p=+(x.p*(1+d.pw*.06)).toFixed(2);x.d=d.pw*.03;(x.hist=x.hist||[]).push(x.p);S.log.unshift({w:-1,t:(d.pw>0?'🚀 神秘大戶拉抬 ':'💣 神秘空頭砸盤 ')+x.s+'！'});S.log=S.log.slice(0,20);send();return}
  if(q>0&&p.cash<q*x.p)return; // 買不起
  if(q<0&&eq(i)<Math.abs(q)*x.p*0.5&&(p.pos[x.s]||0)<=0)return; // 放空保證金不足
  p.cash-=q*x.p;p.pos[x.s]=(p.pos[x.s]||0)+q;S.log.unshift({w:i,t:'你'+(q>0?' 買 ':' 賣 ')+Math.abs(q)+' '+x.s+' @'+x.p});S.log=S.log.slice(0,20);send()}
@@ -200,13 +202,19 @@ function trade(s,dir){const q=dir*+$('qty').value;if(isHost)act(0,{s,q});else co
 function send(){if(conn&&conn.open){const v=JSON.parse(JSON.stringify(S));v.pl[0]={cash:0,pos:{},up:0,dn:0};v.log=v.log.filter(l=>l.w!=0);conn.send(v)}render()}
 
 let sel=null;
+document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('tr.stk');if(t&&t.dataset.s)openStock(t.dataset.s)});
+function fillInv(){const P=S.pl[me],L=[['🚀','拉抬',P.up,'指定個股立刻 +6%，並帶動短暫上漲'],['💣','砸盤',P.dn,'指定個股立刻 −6%，並帶動短暫下跌'],['🎯','狙擊',P.sn||0,'指定個股隨機暴漲或暴跌 8～15%']];$('invb').innerHTML=L.map(a=>'<div class="ic'+(a[2]?'':' z')+'"><div class="e">'+a[0]+'</div><div class="n"><b>'+a[1]+'</b><small>'+a[3]+'</small></div><div class="c">×'+a[2]+'</div></div>').join('')}
+function openInv(){if(!S)return;fillInv();$('inv').classList.remove('hide')}
+function closeInv(){$('inv').classList.add('hide')}
 function openStock(s){sel=s;try{$('dqty').value=$('qty').value}catch(e){}$('sheet').classList.remove('hide');try{SFX.click()}catch(e){}render()}
 function closeStock(){sel=null;$('sheet').classList.add('hide')}
-function tradeSel(dir){if(!sel)return;const q=dir*+$('dqty').value;if(isHost)act(0,{s:sel,q});else conn.send({s:sel,q});try{dir>0?SFX.buy():SFX.sell()}catch(e){}}
-function pwSel(v){if(!sel)return;pw(sel,v)}
-function snSel(){if(!sel)return;sn(sel)}
+function toast(t){let e=$('toast');if(!e){e=document.createElement('div');e.id='toast';e.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:200;background:#1e1048f2;border:2px solid #a78bfa;color:#fff;padding:10px 18px;border-radius:14px;font-weight:700;box-shadow:0 8px 30px #7c3aed88;transition:opacity .3s';document.body.appendChild(e)}e.textContent=t;e.style.opacity=1;clearTimeout(e._t);e._t=setTimeout(()=>e.style.opacity=0,1600)}
+function blocked(){if(!S)return 1;if(S.over){toast('比賽已結束');return 1}if(S.brk>0){toast('📺 新聞播報中，開盤後才能操作');return 1}if(!isHost&&!(conn&&conn.open)){toast('尚未連線');return 1}return 0}
+function tradeSel(dir){if(!sel||blocked())return;const x=S.st.find(t=>t.s==sel),q0=+$('dqty').value,P=S.pl[me];if(dir>0&&P.cash<q0*x.p)return toast('現金不足');toast((dir>0?'✅ 買進 ':'✅ 賣出 ')+q0+' '+sel);const q=dir*+$('dqty').value;if(isHost)act(0,{s:sel,q});else conn.send({s:sel,q});try{dir>0?SFX.buy():SFX.sell()}catch(e){}}
+function pwSel(v){if(!sel||blocked())return;const k=v>0?'up':'dn';if(!(S.pl[me][k]>0))return toast('道具用完了');toast(v>0?'🚀 拉抬 '+sel:'💣 砸盤 '+sel);pw(sel,v)}
+function snSel(){if(!sel||blocked())return;if(!(S.pl[me].sn>0))return toast('🎯 用完了');toast('🎯 狙擊 '+sel);sn(sel)}
 function drawChart(x){const c=$('chart');if(!c)return;const ctx=c.getContext('2d'),W=c.width,H=c.height;ctx.clearRect(0,0,W,H);
- const data=(x.hist&&x.hist.length)?x.hist.slice():[x.o||x.p,x.p];
+ const pv=x.prev||[],data=pv.concat((x.hist&&x.hist.length)?x.hist:[x.p]),nP=pv.length;
  let mn=Math.min(...data),mx=Math.max(...data);if(mx===mn){mx+=1;mn-=1}const pad=(mx-mn)*.12||1;mn-=pad;mx+=pad;
  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#22d3ee33');g.addColorStop(1,'#22d3ee00');
  ctx.beginPath();data.forEach((p,i)=>{const X=10+(W-20)*(i/Math.max(1,data.length-1)),Y=H-14-((p-mn)/(mx-mn))*(H-28);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});
@@ -215,17 +223,18 @@ function drawChart(x){const c=$('chart');if(!c)return;const ctx=c.getContext('2d
  ctx.beginPath();data.forEach((p,i)=>{const X=10+(W-20)*(i/Math.max(1,data.length-1)),Y=H-14-((p-mn)/(mx-mn))*(H-28);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});
  const up=data[data.length-1]>=data[0];ctx.strokeStyle=up?'#4ade80':'#fb7185';ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.shadowColor=up?'#4ade8088':'#fb718588';ctx.shadowBlur=8;ctx.stroke();ctx.shadowBlur=0;
  ctx.beginPath();ctx.arc(lastX,lastY,4.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=up?'#4ade80':'#fb7185';ctx.lineWidth=2;ctx.stroke();
+ if(nP){const DX=10+(W-20)*(nP/Math.max(1,data.length-1));ctx.setLineDash([4,4]);ctx.strokeStyle='#ffffff44';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(DX,6);ctx.lineTo(DX,H-6);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#cbd5e1';ctx.font='12px sans-serif';ctx.fillText('前一天',Math.max(14,DX-60),H-20);ctx.fillText('今天',DX+6,H-20)}
  ctx.fillStyle='#94a3b8';ctx.font='11px ui-monospace,monospace';ctx.fillText(mx.toFixed(2),14,16);ctx.fillText(mn.toFixed(2),14,H-6);
 }
 function money(v){return '$'+Math.round(v).toLocaleString()}
 function render(){if(!S)return;$('lobby').classList.add('hide');$('game').classList.remove('hide');
  for(let i=0;i<2;i++){const op=i!=me,e=op?S.snap[i]:eq(i),pl=e-START;$('e'+i).textContent=money(e);$('p'+i).innerHTML='<span class="'+(pl>=0?'up':'dn')+'">'+(pl>=0?'+':'')+money(pl)+'</span>'+(op?'<br><small>'+(S.over?'最終資產':'🔒 上回合結算・持股不公開')+'</small>':'');$('n'+i).textContent=(i?'挑戰者':'房主')+(i==me?'（你）':'')}
  $('rd').textContent=S.over?'比賽結束':S.brk>0?'📺 第 '+S.round+'/'+S.R+' 回合・新聞播報中… '+S.brk+' 秒後開盤':'第 '+S.round+'/'+S.R+' 回合・剩 '+(TICKS-S.tick)+' 秒';$('tb').style.width=(S.tick/TICKS*100)+'%';
- $('cash').textContent=money(S.pl[me].cash);$('pwi').textContent='🚀拉抬 '+S.pl[me].up+'・💣砸盤 '+S.pl[me].dn+'・🎯狙擊 '+(S.pl[me].sn||0);
+ $('cash').textContent=money(S.pl[me].cash);{const h='<button class="g" onclick="openInv()">🎒 道具背包 🚀'+S.pl[me].up+' 💣'+S.pl[me].dn+' 🎯'+(S.pl[me].sn||0)+'</button>';if($('pwi')._h!==h){$('pwi')._h=h;$('pwi').innerHTML=h}}if(!$('inv').classList.contains('hide'))fillInv();
  if(S.over){const a=S.snap[me],b=S.snap[1-me];$('news').innerHTML=a>b?'🏆 恭喜你獲勝！華爾街之狼就是你！':a<b?'😭 你輸了…下次記得停損！':'🤝 平手！英雄所見略同';}else $('news').textContent=S.news;{const tt=S.tv&&!S.over?S.tv.t+(S.brk>0?'#b':''):'';if(tt!==window._tv){window._tv=tt;const v=$('tv');v.innerHTML=tt?(S.brk>0?ANCHOR:'')+'<small class="live" style="color:#f85149">● LIVE</small> <small>盤前快訊</small><div style="font-size:18px;margin-top:4px;overflow:hidden"><span class="tk">'+tt+'</span></div>':'';v.classList.remove('on');void v.offsetWidth;v.classList.add('on')}}
- $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;const lp=(window._lp=window._lp||{})[x.s],fc=lp==null||lp==x.p?'':lp<x.p?'fu':'fd';window._lp[x.s]=x.p;return '<tr class="stk '+fc+'" onclick="openStock(\''+x.s+'\')"><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td class="chev">走勢 ›</td></tr>'}).join('');
+ $('tbl').innerHTML=S.st.map(x=>{const c=(x.p/x.o-1)*100,h=S.pl[me].pos[x.s]||0;const lp=(window._lp=window._lp||{})[x.s],fc=lp==null||lp==x.p?'':lp<x.p?'fu':'fd';window._lp[x.s]=x.p;return '<tr class="stk '+fc+'" data-s="'+x.s+'"><td><b>'+x.s+'</b><br><small>'+x.n+'</small></td><td class="'+(c>=0?'up':'dn')+'">'+x.p.toFixed(2)+'<br><small>'+(c>=0?'+':'')+c.toFixed(1)+'%</small></td><td><small>持有</small><br>'+h+'</td><td class="chev">走勢 ›</td></tr>'}).join('');
  $('log').innerHTML=S.log.filter(l=>l.w<0||l.w==me).map(l=>l.t).join('<br>');
- if(sel){const x=S.st.find(t=>t.s==sel);if(!x){closeStock()}else{const c=(x.p/x.o-1)*100;$('dsyn').textContent=x.s;$('dname').textContent=x.n;$('dprice').textContent=x.p.toFixed(2);$('dprice').className='sheet-price '+(c>=0?'up':'dn');$('dchg').innerHTML='<span class="'+(c>=0?'up':'dn')+'">'+(c>=0?'▲ +':'▼ ')+c.toFixed(2)+'%</span> · 開盤 '+x.o.toFixed(2);$('dhold').textContent=S.pl[me].pos[x.s]||0;$('dcash').textContent=money(S.pl[me].cash);$('dpwi').textContent='道具剩餘：🚀 '+S.pl[me].up+'　💣 '+S.pl[me].dn+'　🎯 '+(S.pl[me].sn||0)+(S.brk>0||S.over?'（新聞／結束中無法操作）':'');drawChart(x);$('sheet').classList.remove('hide')}}
+ if(sel){const x=S.st.find(t=>t.s==sel);if(!x){closeStock()}else{const c=(x.p/x.o-1)*100;$('dsyn').textContent=x.s;$('dname').textContent=x.n;$('dprice').textContent=x.p.toFixed(2);$('dprice').className='sheet-price '+(c>=0?'up':'dn');$('dchg').innerHTML='<span class="'+(c>=0?'up':'dn')+'">'+(c>=0?'▲ +':'▼ ')+c.toFixed(2)+'%</span> · 開盤 '+x.o.toFixed(2);$('dhold').textContent=S.pl[me].pos[x.s]||0;$('dcash').textContent=money(S.pl[me].cash);$('dpwi').textContent='🚀'+S.pl[me].up+' 💣'+S.pl[me].dn+' 🎯'+(S.pl[me].sn||0)+(S.brk>0?' · 播報中':'');drawChart(x);$('sheet').classList.remove('hide')}}
 }
 </script>
 <button id="mute" onclick="SFX.toggle()" style="position:fixed;top:8px;right:8px;z-index:99;padding:6px 10px;border-radius:20px">🔊</button>
