@@ -413,6 +413,7 @@ function runExtra(H, G){
   near('snipe span is the old 7% times 1.3', sd.SN_RNG, 0.07 * 1.3);
 
   sd.fresh();
+  dmReset(H);
   if (el(H,'toast')) el(H,'toast').textContent = '';
   sd.act(0, {s:'AAPL', pw:1});
   eq('拉抬 moves 100 to 107.80, not the old 106', A().p, +((100 * (1 + sd.PW_HIT)).toFixed(2)));
@@ -661,6 +662,75 @@ function runExtra(H, G){
   G.tradeSel(1);
   check('guest trade button is locked after the synced result', toastOf(G).includes('比賽已結束'));
   eq('guest bankruptcy packet did not reveal host holdings', JSON.stringify(G.__SD.S.pl[0].pos), '{}');
+  runShocks(H, G);
+}
+function runShocks(H, G){
+  const sd = H.__SD;
+  const A = () => px(sd, 'AAPL');
+  check('shock odds and flash size are unchanged', sd.tick.toString().includes('Math.random()<.06') && sd.tick.toString().includes('n:3') && sd.tick.toString().includes('.05+Math.random()*.05'));
+  function play(seq){
+    sd.S.tick = 4; sd.S.brk = 0; sd.S.setl = 0; sd.S.over = false;
+    let n = 0;
+    withRandom(H, () => sd.tick(), () => (n < seq.length ? seq[n++] : 0.5));
+  }
+  sd.fresh();
+  dmReset(H); dmReset(G);
+  const sent = [];
+  sd.conn = {open:true, send(m){ sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd.S.pl[0].pos = {NVDA:7};
+  sd.S.log = [{w:0, t:'你 買 7 NVDA'}];
+  play([0.01, 0, 0.9]);
+  check('flash crash hits AAPL once and keeps its three-tick life', A().fl && A().fl.up === false && A().fl.n === 2);
+  check('flash crash is logged with its existing wording', sd.S.log.some(l => l.t.includes('⚡ 閃崩！') && l.t.includes('AAPL') && l.t.includes('程式單狂殺')));
+  check('host sees the flash-crash danmaku', dmAll(H).all.some(t => t.includes('⚡閃崩') && t.includes('AAPL')));
+  const wire = sent[sent.length - 1];
+  check('flash crash sync stays public and hides the host trade', wire.log.some(l => l.pub === 1 && l.dm.includes('閃崩')) && wire.log.every(l => l.w !== 0) && !JSON.stringify(wire.log).includes('買 7') && JSON.stringify(wire.pl[0].pos) === '{}');
+  G.__SD.isHost = false; G.__SD.me = 1;
+  G.__SD.applyNet(wire);
+  check('guest sees the same flash-crash danmaku', dmAll(G).all.some(t => t.includes('⚡閃崩') && t.includes('AAPL')));
+  const gCount = dmAll(G).all.filter(t => t.includes('閃崩')).length;
+  G.__SD.applyNet(JSON.parse(JSON.stringify(wire)));
+  eq('replaying the flash crash does not banner it again', dmAll(G).all.filter(t => t.includes('閃崩')).length, gCount);
+  sd.S.tick = 9;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  eq('the ongoing crash does not banner again on the next price tick', sd.S.log.filter(l => l.t.includes('閃崩')).length, 1);
+  eq('host danmaku is not flooded while the crash continues', dmAll(H).all.filter(t => t.includes('閃崩')).length, 1);
+  check('the crash is still running after that tick', A().fl && A().fl.n === 1);
+
+  sd.fresh();
+  dmReset(H); dmReset(G);
+  sent.length = 0;
+  sd.conn = {open:true, send(m){ sent.push(JSON.parse(JSON.stringify(m))); }};
+  play([0.01, 0.15, 0]);
+  check('short squeeze is logged for TSLA', sd.S.log.some(l => l.t.includes('🚀 軋空！') && l.t.includes('TSLA')) && px(sd,'TSLA').fl && px(sd,'TSLA').fl.up === true);
+  check('host sees the squeeze danmaku', dmAll(H).all.some(t => t.includes('🚀軋空') && t.includes('TSLA')));
+  G.__SD.applyNet(sent[sent.length - 1]);
+  check('guest sees the squeeze danmaku', dmAll(G).all.some(t => t.includes('🚀軋空') && t.includes('TSLA')));
+
+  sd.fresh();
+  dmReset(H); dmReset(G);
+  sd.S.round = 2;
+  sd.S.pend = [{s:'AAPL', g:0, dl:'財報造假'}];
+  withRandom(H, () => sd.newsCard(), () => 0.5);
+  sd.render('full');
+  check('delisting keeps the full reason in the log', sd.S.log.some(l => l.t.includes('☠️ AAPL 下市！') && l.t.includes('財報造假')));
+  check('host delisting danmaku names the stock and the reason', dmAll(H).all.some(t => t.includes('☠️下市') && t.includes('AAPL') && t.includes('財報造假')));
+  const long = '這是一段很長的下市原因用來測試縮寫';
+  sd.fresh();
+  dmReset(H);
+  sd.S.round = 2;
+  sd.S.pend = [{s:'MSFT', g:0, dl:long}];
+  withRandom(H, () => sd.newsCard(), () => 0.5);
+  sd.render('full');
+  const ms = dmAll(H).all.find(t => t.includes('MSFT'));
+  check('a long delisting reason is shortened on the banner and kept in the log', !!ms && ms.includes('…') && sd.S.log.some(l => l.t.includes(long)));
+
+  sd.fresh();
+  dmReset(H);
+  play([0.01, 0, 0.9]);
+  sd.act(1, {s:'TSLA', pw:1});
+  const mix = dmAll(H).all;
+  check('a market shock and an item notice share the queue', mix.some(t => t.includes('⚡閃崩') && t.includes('AAPL')) && mix.some(t => t.includes('🚀拉抬') && t.includes('TSLA')) && mix.length >= 2);
 }
 
 async function runVisual(H, G){

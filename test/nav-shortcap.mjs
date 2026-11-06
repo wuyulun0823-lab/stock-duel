@@ -224,6 +224,24 @@ async function main(){
     await sleep(350);
     await screenshot(cdp, path.join(ARTIFACTS, 'opponent_item_danmaku.png'));
     await evaluate(cdp, `(() => {
+      const H = document.getElementById('host').contentWindow;
+      const G = document.getElementById('guest').contentWindow;
+      [H, G].forEach(win => {
+        win._dmQ = [];
+        win._dmFree = [0, 0];
+        win.document.querySelectorAll('#dm .dm').forEach(n => { clearTimeout(n._end); clearTimeout(n._t); n.remove(); });
+      });
+      const sd = H.__SD;
+      sd.S.brk = 0; sd.S.setl = 0; sd.S.over = false; sd.S.tick = 4;
+      let n = 0;
+      const seq = [0.01, 0, 0.9];
+      const rnd = H.Math.random;
+      H.Math.random = () => (n < seq.length ? seq[n++] : 0.5);
+      try { sd.tick(); } finally { H.Math.random = rnd; }
+    })()`);
+    await sleep(2200);
+    await screenshot(cdp, path.join(ARTIFACTS, 'market_event_danmaku.png'));
+    await evaluate(cdp, `(() => {
       document.getElementById('pane-host').style.display = '';
       const H = document.getElementById('host').contentWindow;
       const sd = H.__SD;
