@@ -1,5 +1,8 @@
-/* Stock Duel service worker — caches app shell only; never breaks PeerJS/network play */
-const CACHE = 'stock-duel-shell-v2';
+/* Stock Duel service worker — shell cache v3.
+   Do not intercept this script. The previous worker cached sw.js cache-first,
+   so a byte-identical cached copy blocked later deploys. HTML stays network-first
+   (cache: reload) and falls back to the shell only when offline. */
+const CACHE = 'stock-duel-shell-v3';
 const SHELL = [
   './',
   './index.html',
@@ -33,22 +36,30 @@ self.addEventListener('fetch', (event) => {
   // Never intercept cross-origin (PeerJS CDN, signaling, etc.) — keep multiplayer intact
   if (url.origin !== self.location.origin) return;
 
-  // Network-first for HTML/navigation so Pages updates show up; fall back to cache offline
+  // Let the browser fetch sw.js itself so update checks see new bytes.
+  if (url.pathname.endsWith('/sw.js')) return;
+
+  // Network-first for HTML/navigation so Pages updates show up; fall back to cache offline.
+  // cache:'reload' bypasses the browser HTTP cache that was pinning the previous shell.
   const isNav = req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
-  if (isNav || url.pathname.endsWith('.html') || url.pathname.endsWith('/') ) {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
+  if (isNav || url.pathname.endsWith('.html') || url.pathname.endsWith('/')) {
+    event.respondWith((async () => {
+      try {
+        const res = await fetch(req.url, {cache: 'reload', credentials: 'same-origin'});
+        if (res && res.ok) {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req).then((r) => r || caches.match('./index.html')))
-    );
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        }
+        return res;
+      } catch (e) {
+        const cached = await caches.match(req);
+        return cached || caches.match('./index.html');
+      }
+    })());
     return;
   }
 
-  // Cache-first for local static assets (icons, manifest, sw companions)
+  // Cache-first for local static assets (icons, manifest)
   event.respondWith(
     caches.match(req).then((hit) => {
       if (hit) return hit;

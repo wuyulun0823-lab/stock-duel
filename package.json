@@ -4,6 +4,7 @@
   "private": true,
   "description": "美股對決 Stock Duel — Capacitor mobile wrapper",
   "scripts": {
+    "test": "node test/nav-shortcap.mjs",
     "sync:www": "mkdir -p www/icons && cp index.html manifest.webmanifest sw.js www/ && cp icons/*.png www/icons/",
     "build:android": "npm run sync:www && npx cap sync android && cd android && ./gradlew assembleDebug"
   },

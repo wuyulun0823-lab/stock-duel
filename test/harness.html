@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Stock Duel test harness</title>
+<style>
+  html,body{margin:0;height:100%;background:#050311;color:#fff;font-family:system-ui,"Noto Sans TC",sans-serif}
+  #bar{display:flex;gap:12px;align-items:center;padding:8px 12px;background:#120a28;border-bottom:2px solid #a78bfa;min-height:36px}
+  #status{flex:1;font-weight:800;line-height:1.35}
+  #play{font:800 16px system-ui;padding:8px 16px;border-radius:12px;border:0;background:#7c3aed;color:#fff;cursor:pointer}
+  #panes{display:flex;height:calc(100% - 54px)}
+  .pane{flex:1;min-width:0;display:flex;flex-direction:column;border-right:2px solid #a78bfa55}
+  .pane h2{margin:0;padding:6px 8px;text-align:center;font-size:15px;background:#1e1048}
+  iframe{flex:1;width:100%;border:0;background:#050311}
+</style>
+</head>
+<body>
+<div id="bar"><button id="play" hidden type="button">播放測試</button><div id="status">載入測試頁…</div></div>
+<div id="panes">
+  <div class="pane" id="pane-host"><h2>房主視角</h2><iframe id="host" src="/index.html?test=1&amp;nosw=1"></iframe></div>
+  <div class="pane" id="pane-guest"><h2>挑戰者視角</h2><iframe id="guest" src="/index.html?test=1&amp;nosw=1"></iframe></div>
+</div>
+<script>
+const MODE = new URLSearchParams(location.search).get('assert') === '1'
+  ? 'assert'
+  : (new URLSearchParams(location.search).get('demo') === '1' ? 'demo' : 'idle');
+const log = [];
+const statusEl = document.getElementById('status');
+function status(t){ statusEl.textContent = t; }
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+async function pause(ms){ if (MODE === 'demo') await sleep(ms); }
+function check(name, cond){
+  status(name);
+  if (!cond) throw new Error('FAIL: ' + name);
+  log.push('PASS ' + name);
+}
+function eq(name, a, b){
+  status(name);
+  if (a !== b) throw new Error('FAIL: ' + name + '\n  got ' + JSON.stringify(a) + '\n  exp ' + JSON.stringify(b));
+  log.push('PASS ' + name);
+}
+function el(win, id){ return win.document.getElementById(id); }
+function px(sd, s){ return sd.S.st.find(t => t.s === s); }
+function holds(win){
+  return [...win.document.querySelectorAll('#tbl tr.stk')].map(tr => ({
+    s: tr.dataset.s,
+    h: (tr.querySelector('.holdn') || {}).textContent || ''
+  }));
+}
+function toastOf(win){
+  const t = el(win, 'toast');
+  return t ? t.textContent : '';
+}
+function dmAll(win){
+  const nodes = [...win.document.querySelectorAll('#dm .dm')].map(n => n.textContent);
+  const q = (win._dmQ || []).map(j => j.text);
+  return {nodes, q, all: nodes.concat(q)};
+}
+function dmReset(win){
+  win._dmQ = [];
+  win._dmFree = [0, 0];
+  win.document.querySelectorAll('#dm .dm').forEach(n => { clearTimeout(n._end); clearTimeout(n._t); n.remove(); });
+}
+function freezeToast(win){
+  const t = el(win, 'toast');
+  if (!t) return;
+  clearTimeout(t._t);
+  t.style.opacity = '1';
+}
+async function waitFor(fn, ms){
+  const t0 = performance.now();
+  let last;
+  while (performance.now() - t0 < (ms || 5000)) {
+    try {
+      const v = fn();
+      if (v) return v;
+      last = v;
+    } catch (e) { last = e; }
+    await sleep(20);
+  }
+  throw new Error('timeout ' + (last && last.message ? last.message : ''));
+}
+function wrapIntervals(win){
+  const ids = [];
+  const orig = win.setInterval.bind(win);
+  win.setInterval = function(fn, ms){ const id = orig(fn, ms); ids.push(id); return id; };
+  win.__clearInts = function(){ while (ids.length) win.clearInterval(ids.pop()); };
+}
+function installPeer(win){
+  const bus = window.__bus;
+  function Conn(){ this.open = false; this.h = {}; }
+  Conn.prototype.on = function(ev, fn){ this.h[ev] = fn; if (ev === 'open' && this.open) fn(); };
+  Conn.prototype.send = function(data){
+    const other = this.other;
+    const msg = JSON.parse(JSON.stringify(data));
+    setTimeout(() => { if (other && other.h.data) other.h.data(msg); }, 0);
+  };
+  Conn.prototype.close = function(){ if (this.other && this.other.h.close) this.other.h.close(); };
+  function Peer(id){
+    this.id = id || ('anon-' + Math.random().toString(36).slice(2));
+    this.h = {};
+    bus.peers[this.id] = this;
+  }
+  Peer.prototype.on = function(ev, fn){
+    this.h[ev] = fn;
+    if (ev === 'open') setTimeout(() => fn(this.id), 0);
+  };
+  Peer.prototype.connect = function(id){
+    const remote = bus.peers[id];
+    const local = new Conn();
+    if (!remote || !remote.h.connection) return local;
+    const remoteConn = new Conn();
+    local.other = remoteConn;
+    remoteConn.other = local;
+    setTimeout(() => {
+      remote.h.connection(remoteConn);
+      local.open = true;
+      remoteConn.open = true;
+      if (local.h.open) local.h.open();
+      if (remoteConn.h.open) remoteConn.h.open();
+    }, 0);
+    return local;
+  };
+  win.Peer = Peer;
+}
+function withRandom(win, fn, rnd){
+  const prev = win.Math.random;
+  win.Math.random = rnd;
+  try { return fn(); }
+  finally { win.Math.random = prev; }
+}
+
+function runUnit(H, G){
+  const sd = H.__SD;
+  const A = () => px(sd, 'AAPL');
+  const html = H.document.documentElement.outerHTML;
+  check('short cap constant is 200000', sd.SH_CAP === 200000);
+  check('starting cash stays 100000', sd.START === 100000);
+  check('help shows 200k cap', html.includes('做空總成本≤$200,000'));
+  check('help says net assets are live', html.includes('淨資產對戰中即時顯示'));
+  check('old 100k cap text is gone', !html.includes('$100,000') && !html.includes('上回合'));
+  check('no margin, share cap, last-5s, or negative-equity ban in source',
+    !html.includes('marginCall') && !html.includes('強制回補') && !html.includes('最後 5 秒禁止') &&
+    !html.includes('禁止新增空單') && !html.includes('單檔最多') && !html.includes('資產為負，禁止') && !html.includes('SH_MAX'));
+  check('tick and shortErr do not call removed rules',
+    !sd.tick.toString().includes('marginCall') && !sd.shortErr.toString().includes('SH_MAX') &&
+    !sd.shortErr.toString().includes('TICKS-5'));
+  check('manual share inputs remain number fields',
+    !!H.document.querySelector('input#qty') && !!H.document.querySelector('input#dqty') &&
+    !H.document.querySelector('select#qty'));
+
+  sd.fresh();
+  const before = sd.eq(0);
+  sd.act(0, {s:'AAPL', q:-50});
+  eq('short at the trade price does not change equity', sd.eq(0), before);
+  eq('short increases cash and records negative shares', sd.S.pl[0].pos.AAPL, -50);
+  const mid = sd.eq(0);
+  sd.act(0, {s:'AAPL', q:20});
+  eq('partial cover keeps equity flat at the same price', sd.eq(0), mid);
+  eq('partial cover reduces the short', sd.S.pl[0].pos.AAPL, -30);
+  sd.fresh();
+  sd.act(0, {s:'AAPL', q:10});
+  sd.act(0, {s:'AAPL', q:-25});
+  eq('sell-through flips a long into a 15-share short', sd.S.pl[0].pos.AAPL, -15);
+  eq('only the short shares count toward notional', sd.shortVal(0), 1500);
+  eq('round-trip through flat still matches starting equity', sd.eq(0), sd.START);
+
+  sd.fresh();
+  sd.act(0, {s:'AAPL', q:10});
+  A().p = 130;
+  eq('long equity rises with the current price', sd.eq(0), 99000 + 1300);
+  sd.render('tick');
+  eq('host HUD shows live long equity, not last-round snap', el(H,'e0').textContent, sd.money(sd.eq(0)));
+  check('live long equity differs from snap', el(H,'e0').textContent !== sd.money(sd.S.snap[0]));
+  sd.fresh();
+  sd.act(1, {s:'TSLA', q:-10});
+  px(sd,'TSLA').p = 160;
+  eq('short equity falls when the price rises', sd.eq(1), 101000 - 1600);
+  sd.render('tick');
+  eq('host HUD shows the opponent short equity live', el(H,'e1').textContent, sd.money(sd.eq(1)));
+  check('opponent card says holdings stay hidden', el(H,'p1').innerHTML.includes('即時淨資產・持股不公開') && !el(H,'p1').innerHTML.includes('上回合'));
+
+  sd.fresh();
+  sd.S.tick = 4;
+  sd.S.pl[0].cash = 90000; sd.S.pl[0].pos = {AAPL:100};
+  sd.S.pl[1].cash = 110000; sd.S.pl[1].pos = {AAPL:-100};
+  const pre0 = sd.eq(0), pre1 = sd.eq(1);
+  withRandom(H, () => sd.tick(), () => 0.99);
+  check('price tick marks longs up and shorts down', px(sd,'AAPL').p > 100 && sd.eq(0) > pre0 && sd.eq(1) < pre1);
+  eq('HUD follows the price tick', el(H,'e0').textContent, sd.money(sd.eq(0)));
+  check('snap is not rewritten mid-round', sd.S.snap[0] === sd.START && el(H,'e0').textContent !== sd.money(sd.S.snap[0]));
+
+  sd.fresh();
+  sd.conn = {open:true, send(m){ sd._sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd._sent = [];
+  sd.S.pl[0].cash = 91500;
+  sd.S.pl[0].pos = {AAPL:10, NVDA:80};
+  sd.S.pl[1].cash = 100500;
+  sd.S.pl[1].pos = {AAPL:-10};
+  px(sd,'AAPL').p = 50;
+  sd.S.pend = [{s:'AAPL', g:0, dl:'測試下市'}];
+  sd.S.tick = sd.TICKS - 1; sd.S.round = 1; sd.S.R = 5;
+  const dPre0 = sd.eq(0), dPre1 = sd.eq(1);
+  withRandom(H, () => sd.tick(), () => 0.5);
+  eq('round snap is equity before the news delist', sd.S.snap[0], dPre0);
+  eq('round snap stores the short before the delist too', sd.S.snap[1], dPre1);
+  check('delist zeroes the position and the price', px(sd,'AAPL').p === 0 && sd.S.pl[0].pos.AAPL === 0 && sd.S.pl[1].pos.AAPL === 0 && px(sd,'AAPL').dl === '測試下市');
+  check('long delist drops equity and short delist removes the liability', sd.eq(0) < dPre0 && sd.eq(1) > dPre1);
+  eq('HUD shows post-delist equity during the news break', el(H,'e0').textContent, sd.money(sd.eq(0)));
+  check('post-delist HUD is not the previous snap', el(H,'e0').textContent !== sd.money(sd.S.snap[0]) && el(H,'e1').textContent === sd.money(sd.eq(1)));
+  check('host still shows the surviving NVDA holding', holds(H).some(r => r.s === 'NVDA' && r.h.includes('80')));
+  const delistMsg = sd._sent[sd._sent.length - 1];
+  check('delist sync carries nav and strips host holdings',
+    delistMsg && delistMsg.nav && delistMsg.nav[0] === sd.eq(0) && delistMsg.nav[1] === sd.eq(1) &&
+    JSON.stringify(delistMsg.pl[0].pos) === '{}' && delistMsg.pl[0].cash === 0 && !delistMsg.pl[0].pos.NVDA);
+  G.__SD.isHost = false;
+  G.__SD.me = 1;
+  G.__SD.applyNet(delistMsg);
+  eq('guest shows the same post-delist host equity', el(G,'e0').textContent, el(H,'e0').textContent);
+  eq('guest shows the same post-delist own equity', el(G,'e1').textContent, el(H,'e1').textContent);
+  eq('guest cannot recompute host equity from stripped holdings', G.__SD.eq(0), 0);
+  check('guest shown equity comes from nav, not the empty book', G.__SD.shownEq(0) !== G.__SD.eq(0));
+  check('guest table does not reveal the host NVDA shares', holds(G).filter(r => r.s === 'NVDA').every(r => !r.h.includes('80')));
+  G.__SD.openHold();
+  check('guest holdings panel has no host NVDA line', !el(G,'holdb').textContent.includes('NVDA'));
+  el(G,'hold').classList.add('hide');
+
+  sd.fresh();
+  sd.S.pl[0].cash = 180000;
+  sd.S.pl[1].cash = 90000;
+  sd.S.round = 1; sd.S.R = 1; sd.S.tick = sd.TICKS - 1; sd.S.brk = 0;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  check('final snap matches equity at the whistle', sd.S.over === true && sd.S.snap[0] === 180000 && sd.S.snap[1] === 90000);
+  eq('final HUD matches that equity', el(H,'e0').textContent, sd.money(180000));
+  check('winner banner still uses the snap', el(H,'news').innerHTML.includes('恭喜你獲勝'));
+  check('finished opponent line keeps holdings hidden', el(H,'p1').innerHTML.includes('最終資產・持股不公開'));
+
+  sd.fresh();
+  sd.S.brk = 7;
+  sd.S.pl[0].cash = 120000;
+  sd.render('brk');
+  eq('news break still shows live equity', el(H,'e0').textContent, sd.money(120000));
+  check('break label is the news countdown', el(H,'rd').textContent.includes('新聞播報'));
+
+  sd.fresh();
+  sd.act(0, {s:'AAPL', q:10});
+  const tableHtml = el(H,'tbl').innerHTML;
+  px(sd,'AAPL').p = 130;
+  sd.render('tick');
+  eq('pure tick does not rebuild the price table', el(H,'tbl').innerHTML, tableHtml);
+  eq('pure tick still refreshes net equity', el(H,'e0').textContent, sd.money(sd.eq(0)));
+  sd.render('prices');
+  check('price sync still updates the table', el(H,'tbl').innerHTML !== tableHtml);
+
+  sd.fresh();
+  const sent = [];
+  sd.conn = {open:true, send(m){ sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd.S.pl[0].pos = {NVDA:4242};
+  sd.S.pl[0].cost = {NVDA:10};
+  sd.S.pl[1].pos = {TSLA:-1313};
+  sd.S.pl[1].cash = 150000;
+  sd.S.log = [{w:0, t:'你 買 4242 NVDA'}, {w:1, t:'你 賣 1313 TSLA'}, {w:-1, t:'系統'}];
+  sd.send('tick');
+  sd.send('prices');
+  sd.send('full');
+  const tick = sent[0], prices = sent[1], full = sent[2];
+  eq('tick nav is authoritative equity', tick.nav[0], sd.eq(0));
+  eq('tick nav includes the guest too', tick.nav[1], sd.eq(1));
+  check('tick omits the stock tape and history', !tick.st && !JSON.stringify(tick).includes('"hist"'));
+  eq('tick strips host positions', JSON.stringify(tick.pl[0].pos), '{}');
+  eq('tick strips host cash', tick.pl[0].cash, 0);
+  eq('tick still echoes the guest own short', tick.pl[1].pos.TSLA, -1313);
+  check('tick log drops host-only trades', tick.log.every(l => l.w !== 0) && !JSON.stringify(tick.log).includes('4242'));
+  check('price sync keeps nav and does not attach positions to quotes',
+    prices.nav[0] === tick.nav[0] && prices.st.length === 10 && prices.st.every(x => !('pos' in x)));
+  check('price sync is the heavier message; tick stays slim', JSON.stringify(prices).length > JSON.stringify(tick).length);
+  check('full sync also strips host holdings and keeps nav',
+    !full._sync && JSON.stringify(full.pl[0].pos) === '{}' && full.pl[0].cash === 0 && full.nav[0] === sd.eq(0) &&
+    full.log.every(l => l.w !== 0));
+
+  sd.fresh();
+  A().p = 100;
+  eq('exactly $200,000 notional is allowed', sd.shortErr(0, A(), -2000), '');
+  check('one dollar of notional over the cap is rejected', sd.shortErr(0, A(), -2001).includes('$200,000'));
+  sd.act(0, {s:'AAPL', q:-2000});
+  eq('host applies a short that lands on the cap', sd.S.pl[0].pos.AAPL, -2000);
+  eq('filled short notional is the cap', sd.shortVal(0), 200000);
+  sd.act(0, {s:'AAPL', q:-1});
+  eq('host rejects a short past the cap', sd.S.pl[0].pos.AAPL, -2000);
+  sd.act(1, {s:'AAPL', q:-2000});
+  eq('the cap is per player', sd.S.pl[1].pos.AAPL, -2000);
+  sd.act(0, {s:'TSLA', q:-1});
+  check('a second name cannot push the same player over the cap', !sd.S.pl[0].pos.TSLA);
+
+  sd.fresh();
+  A().p = 100;
+  sd.S.pl[0].pos = {AAPL:-1999};
+  sd.S.pl[0].cash = sd.START + 199900;
+  const err = sd.shortErr(0, A(), -2);
+  check('cap message states 200,000, the current notional, and remaining shares',
+    err.includes('$200,000') && err.includes('$199,900') && err.includes('最多再空 1 股'));
+  eq('one more share that lands on the cap is allowed', sd.shortErr(0, A(), -1), '');
+
+  sd.fresh();
+  A().p = 100; px(sd,'TSLA').p = 100;
+  sd.act(0, {s:'AAPL', q:-1000});
+  sd.act(0, {s:'TSLA', q:-1000});
+  eq('aggregate notional adds every short at the current price', sd.shortVal(0), 200000);
+  check('no extra share on either name', sd.shortErr(0, A(), -1) && sd.shortErr(0, px(sd,'TSLA'), -1));
+  eq('covering is not a new short', sd.shortErr(0, px(sd,'TSLA'), 1), '');
+  px(sd,'TSLA').p = 50;
+  eq('a price drop frees notional at the new price', sd.shortVal(0), 150000);
+  eq('newly freed room is shares times the new price', sd.shortErr(0, px(sd,'TSLA'), -1000), '');
+  check('one share past the freed room is rejected', !!sd.shortErr(0, px(sd,'TSLA'), -1001));
+
+  sd.fresh();
+  A().p = 50.25;
+  eq('cents are included in the notional', sd.shortErr(0, A(), -3980), '');
+  check('the next cent-priced share crosses 200,000', sd.shortErr(0, A(), -3981).includes('$200,000'));
+  sd.act(0, {s:'AAPL', q:-3980});
+  sd.act(0, {s:'AAPL', q:-1});
+  eq('host validation uses the same cent notional', sd.S.pl[0].pos.AAPL, -3980);
+
+  sd.fresh();
+  A().p = 100;
+  sd.act(0, {s:'AAPL', q:-1000});
+  A().p = 250;
+  check('a price spike above the cap blocks new shorts', !!sd.shortErr(0, A(), -1));
+  eq('covering is still allowed above the cap', sd.shortErr(0, A(), 100), '');
+  sd.act(0, {s:'AAPL', q:100});
+  eq('cover buys back shares without a forced liquidation', sd.S.pl[0].pos.AAPL, -900);
+  eq('cover cash uses the current price', sd.S.pl[0].cash, 175000);
+  eq('remaining short stays above the cap', sd.shortVal(0), 225000);
+
+  sd.fresh();
+  const tsla = px(sd,'TSLA');
+  tsla.p = 10;
+  sd.act(1, {s:'TSLA', q:-100});
+  tsla.p = 1500;
+  check('negative equity is not itself a short ban', sd.eq(1) < 0 && sd.shortVal(1) === 150000);
+  eq('33 more shares stay within 200,000', sd.shortErr(1, tsla, -33), '');
+  check('34 more shares cross the cap', !!sd.shortErr(1, tsla, -34));
+  sd.act(1, {s:'TSLA', q:-33});
+  eq('host accepts that short while equity is negative', sd.S.pl[1].pos.TSLA, -133);
+  check('equity remains negative after the allowed short', sd.eq(1) < 0);
+
+  sd.fresh();
+  sd.S.tick = 116;
+  A().p = 20;
+  eq('a short inside the old last-five-second window is allowed', sd.shortErr(0, A(), -100), '');
+  sd.act(0, {s:'AAPL', q:-100});
+  eq('host applies that short without moving the clock', sd.S.pl[0].pos.AAPL, -100);
+  eq('clock stays in the old ban window', sd.S.tick, 116);
+
+  sd.fresh();
+  A().p = 10;
+  sd.act(0, {s:'AAPL', q:-5000});
+  eq('5000 shares are allowed when notional is under the cap', sd.S.pl[0].pos.AAPL, -5000);
+  eq('that position is notional, not a share cap', sd.shortVal(0), 50000);
+
+  sd.fresh();
+  sd.sel = 'AAPL';
+  el(H,'dqty').value = '37';
+  sd.tradeSel(1);
+  eq('typed 37 shares is the filled quantity', sd.S.pl[0].pos.AAPL, 37);
+  eq('typed quantity is copied to the list input', el(H,'qty').value, '37');
+  el(H,'dqty').value = '12.5';
+  sd.tradeSel(1);
+  eq('fractional input does not trade', sd.S.pl[0].pos.AAPL, 37);
+  check('fractional input explains the integer rule', toastOf(H).includes('正整數'));
+  el(H,'dqty').value = '';
+  sd.tradeSel(1);
+  eq('empty input does not trade', sd.S.pl[0].pos.AAPL, 37);
+  el(H,'dqty').type = 'text';
+  el(H,'dqty').value = ' 80 ';
+  sd.tradeSel(1);
+  el(H,'dqty').type = 'number';
+  eq('surrounding spaces still count as 80 shares', sd.S.pl[0].pos.AAPL, 117);
+
+  sd.fresh();
+  sd.isHost = false;
+  sd.me = 1;
+  const guestSent = [];
+  sd.conn = {open:true, send(m){ guestSent.push(m); }};
+  sd.S.brk = 0;
+  sd.sel = 'TSLA';
+  px(sd,'TSLA').p = 100;
+  el(H,'dqty').value = '2000';
+  sd.tradeSel(-1);
+  eq('guest client sends a short that lands on the cap', guestSent.length, 1);
+  eq('guest short order is the typed size', guestSent[0].q, -2000);
+  check('guest does not apply the fill locally', !sd.S.pl[1].pos.TSLA);
+  el(H,'dqty').value = '2001';
+  sd.tradeSel(-1);
+  eq('guest client blocks a short over the cap before send', guestSent.length, 1);
+  check('guest toast states the 200,000 cap', toastOf(H).includes('$200,000'));
+}
+
+function near(name, a, b){
+  status(name);
+  if (!(Math.abs(a - b) < 1e-9)) throw new Error('FAIL: ' + name + '\n  got ' + a + '\n  exp ' + b);
+  log.push('PASS ' + name);
+}
+function runExtra(H, G){
+  const sd = H.__SD;
+  const A = () => px(sd, 'AAPL');
+  check('trading round is 180 seconds', sd.TICKS === 180);
+  check('help says 180 seconds and separate premarket time', H.document.body.textContent.includes('180 秒') && H.document.body.textContent.includes('盤前新聞'));
+  check('market noise and news formula are not scaled by the item boost', sd.tick.toString().includes('.045') && !sd.tick.toString().includes('PW_HIT') && sd.newsCard.toString().includes('.15+Math.random()*.1'));
+  near('pump hit is the old 6% times 1.3', sd.PW_HIT, 0.06 * 1.3);
+  near('pump drift is the old 0.03 times 1.3', sd.PW_DRIFT, 0.03 * 1.3);
+  near('snipe floor is the old 8% times 1.3', sd.SN_LO, 0.08 * 1.3);
+  near('snipe span is the old 7% times 1.3', sd.SN_RNG, 0.07 * 1.3);
+
+  sd.fresh();
+  dmReset(H);
+  if (el(H,'toast')) el(H,'toast').textContent = '';
+  sd.act(0, {s:'AAPL', pw:1});
+  eq('拉抬 moves 100 to 107.80, not the old 106', A().p, +((100 * (1 + sd.PW_HIT)).toFixed(2)));
+  near('拉抬 drift seed is 0.039 and is not applied twice', A().d, sd.PW_DRIFT);
+  eq('拉抬 still spends one charge and a 10 second cooldown', sd.S.pl[0].up, 3);
+  eq('cooldown stays 10', sd.S.pl[0].cd, 10);
+  eq('other names are not moved by 拉抬', px(sd,'TSLA').p, 100);
+  check('own item is logged with actor and ticker', sd.S.log[0].t.includes('房主使用了🚀拉抬') && sd.S.log[0].t.includes('AAPL'));
+  check('own item does not fire a danmaku banner', dmAll(H).all.length === 0);
+  const id0 = H._iev;
+  sd.S.pl[0].cd = 5;
+  sd.act(0, {s:'TSLA', pw:1});
+  eq('cooldown rejection creates no item event', H._iev, id0);
+  eq('cooldown rejection does not change the target', px(sd,'TSLA').p, 100);
+  sd.fresh();
+  sd.S.pl[0].sn = 0;
+  const id1 = H._iev || 0;
+  sd.act(0, {s:'AAPL', sn:1});
+  eq('empty sniper creates no event', H._iev || 0, id1);
+  sd.S.pl[0].sn = 4;
+  A().dl = '下市';
+  sd.act(0, {s:'AAPL', pw:1});
+  eq('delisted target rejects the item', sd.S.pl[0].up, 4);
+  sd.S.brk = 2;
+  sd.act(0, {s:'TSLA', sn:1});
+  eq('news break rejects items', sd.S.pl[0].sn, 4);
+
+  sd.fresh();
+  withRandom(H, () => sd.act(0, {s:'NVDA', sn:1}), () => 0);
+  eq('sniper low end is 10.4% down, not the old 8%', px(sd,'NVDA').p, +((100 * (1 - sd.SN_LO)).toFixed(2)));
+  eq('sniper has no second-stage drift', px(sd,'NVDA').d || 0, 0);
+  check('sniper log names the stock and the percent', sd.S.log[0].t.includes('🎯狙擊') && sd.S.log[0].t.includes('NVDA') && sd.S.log[0].t.includes('10.4%'));
+  sd.fresh();
+  let k = 0;
+  const seq = [0.99, 1];
+  withRandom(H, () => sd.act(0, {s:'NVDA', sn:1}), () => seq[k++]);
+  eq('sniper high end is 19.5% up, not the old 15%', px(sd,'NVDA').p, +((100 * (1 + sd.SN_LO + sd.SN_RNG)).toFixed(2)));
+
+  sd.fresh();
+  sd.act(0, {s:'AAPL', pw:1});
+  sd.S.tick = 4;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  const p1 = +((100 * (1 + sd.PW_HIT)).toFixed(2));
+  eq('next price tick adds the drift once', A().p, +((p1 * (1 + sd.PW_DRIFT)).toFixed(2)));
+  near('drift then decays by 0.8 and is not scaled again', A().d, sd.PW_DRIFT * 0.8);
+  check('that quiet tick did not bankrupt a flat book', sd.S.over !== true);
+  sd.fresh();
+  A().p = 100;
+  sd.S.tick = 1;
+  withRandom(H, () => sd.tick(), () => 0.99);
+  eq('price still changes only every 5 seconds', A().p, 100);
+
+  sd.fresh();
+  const sent = [];
+  sd.conn = {open:true, send(m){ sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd.act(0, {s:'AAPL', q:10});
+  sd.act(0, {s:'TSLA', pw:-1});
+  const msg = sent[sent.length - 1];
+  check('item sync is public and host trades stay off it', msg.log.some(l => l.by === 0 && l.t.includes('💣砸盤') && l.t.includes('TSLA')) && msg.log.every(l => l.w !== 0) && JSON.stringify(msg.pl[0].pos) === '{}');
+  G.__SD.isHost = false;
+  G.__SD.me = 1;
+  if (el(G,'toast')) el(G,'toast').textContent = '';
+  G.__SD.applyNet(msg);
+  const gdm = dmAll(G);
+  check('guest danmaku names the host item and ticker', gdm.all.some(t => t.includes('房主') && t.includes('💣砸盤') && t.includes('TSLA')));
+  check('guest danmaku does not block taps', gdm.nodes.length > 0 && getComputedStyle(G.document.querySelector('#dm .dm')).pointerEvents === 'none' && getComputedStyle(G.document.getElementById('dm')).pointerEvents === 'none');
+  check('guest log keeps that item', el(G,'log').textContent.includes('💣砸盤') && el(G,'log').textContent.includes('TSLA'));
+  const gCount = gdm.all.length;
+  G.__SD.applyNet(JSON.parse(JSON.stringify(msg)));
+  eq('replaying the full state does not add another danmaku', dmAll(G).all.length, gCount);
+  G.__SD.applyNet({_sync:'tick', tick:msg.tick, round:msg.round, R:msg.R, brk:0, setl:0, endR:0, over:false, snap:msg.snap, nav:msg.nav, pl:msg.pl, log:msg.log});
+  eq('a later tick with the same item does not add another danmaku', dmAll(G).all.length, gCount);
+
+  sd.fresh();
+  if (el(H,'toast')) el(H,'toast').textContent = '';
+  sd.act(1, {s:'NVDA', pw:1});
+  check('host danmaku names the guest item and ticker', dmAll(H).all.some(t => t.includes('挑戰者') && t.includes('🚀拉抬') && t.includes('NVDA')));
+  const hCount = dmAll(H).all.length;
+  sd.render('tick');
+  eq('host render of the same item does not add another danmaku', dmAll(H).all.length, hCount);
+  sd.fresh();
+  dmReset(H);
+  sd.S.log = [
+    {w:-1, id:9001, by:1, dm:'挑戰者 🚀拉抬 · AAPL', t:'挑戰者使用了🚀拉抬，目標 AAPL'},
+    {w:-1, id:9002, by:1, dm:'挑戰者 💣砸盤 · TSLA', t:'挑戰者使用了💣砸盤，目標 TSLA'},
+    {w:-1, id:9003, by:1, dm:'挑戰者 🎯狙擊 · NVDA', t:'挑戰者使用了🎯狙擊，目標 NVDA'}
+  ];
+  H.announceItems();
+  const burst = dmAll(H);
+  eq('a burst keeps every danmaku in a lane or the queue', burst.all.length, 3);
+  check('burst lanes do not collapse into one node', burst.nodes.length >= 1 && burst.nodes.length < 3 && burst.nodes.length + burst.q.length === 3);
+  check('burst still names every target', ['AAPL','TSLA','NVDA'].every(s => burst.all.some(t => t.includes(s))));
+  H.announceItems();
+  eq('announcing the same burst again does not duplicate it', dmAll(H).all.length, 3);
+  dmReset(H);
+  H.document.documentElement.dataset.dmReduce = '1';
+  sd.S.log.unshift({w:-1, id:9004, by:1, dm:'挑戰者 💣砸盤 · AMD', t:'挑戰者使用了💣砸盤，目標 AMD'});
+  H.announceItems();
+  const stat = H.document.querySelector('#dm .dm.static');
+  check('reduced motion uses a static readable banner', !!stat && stat.textContent.includes('AMD') && getComputedStyle(stat).pointerEvents === 'none');
+  H.document.documentElement.dataset.dmReduce = '';
+  H.openInv();
+  const inv = el(H,'invb').textContent;
+  check('inventory states the scaled strengths', inv.includes('+7.8%') && inv.includes('−7.8%') && inv.includes('10.4～19.5%'));
+  check('inventory no longer states the old percents', !inv.includes('+6%') && !inv.includes('8～15%'));
+  el(H,'inv').classList.add('hide');
+
+  sd.fresh();
+  sd.S.pl[0].cash = -5000;
+  sd.S.pl[0].pos = {AAPL:100};
+  A().p = 100;
+  sd.bust();
+  check('negative cash with positive equity is not bankruptcy', sd.S.over !== true && sd.eq(0) === 5000);
+  sd.fresh();
+  sd.S.pl[0].cash = 0;
+  sd.bust();
+  check('exactly zero equity does not lose', sd.S.over !== true && sd.eq(0) === 0);
+  sd.S.pl[1].cash = 1000;
+  sd.S.pl[1].pos = {TSLA:-10};
+  px(sd,'TSLA').p = 100;
+  sd.bust();
+  check('a marked short at exactly zero does not lose', sd.S.over !== true && sd.eq(1) === 0);
+
+  sd.fresh();
+  sd.S.pl[1].cash = -25;
+  sd.bust();
+  sd.render('full');
+  check('only the negative book loses', sd.S.over === true && sd.S.bust === 1 && sd.S.snap[1] === -25 && sd.S.snap[0] === sd.START);
+  check('host sees the guest bankruptcy reason', el(H,'news').textContent.includes('對手淨資產低於 0'));
+  check('bankruptcy log is explicit', sd.S.log[0].t.includes('挑戰者淨資產低於 0'));
+  const busts = sd.S.log.filter(l => l.t.includes('破產')).length;
+  sd.bust();
+  eq('bankruptcy does not fire twice', sd.S.log.filter(l => l.t.includes('破產')).length, busts);
+  const locked = px(sd,'AAPL').p;
+  const up = sd.S.pl[0].up;
+  sd.act(0, {s:'AAPL', pw:1});
+  eq('items are refused after bankruptcy', sd.S.pl[0].up, up);
+  sd.tick();
+  eq('ticks stop after bankruptcy', px(sd,'AAPL').p, locked);
+  check('bankruptcy overlay does not promise another round', el(H,'phase').textContent.includes('沒有下一回合') && el(H,'phase').textContent.includes('破產'));
+  check('countdown is gone after bankruptcy', el(H,'cd5').classList.contains('hide'));
+
+  sd.fresh();
+  sd.S.pl[0].cash = 1000; sd.S.pl[0].pos = {AAPL:-10};
+  sd.S.pl[1].cash = 1000; sd.S.pl[1].pos = {AAPL:-10};
+  A().p = 100; A().d = 0.5; sd.S.tick = 4;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  eq('one price tick that sinks both books is a draw', sd.S.bust, 2);
+  check('draw copy names both players', el(H,'news').textContent.includes('同時低於 0') && sd.S.log.filter(l => l.t.includes('破產平手')).length === 1);
+  const bothP = A().p;
+  sd.tick();
+  eq('draw also freezes the tape', A().p, bothP);
+
+  sd.fresh();
+  sd.S.round = 2; sd.S.R = 5; sd.S.brk = 0; sd.S.setl = 0; sd.S.over = false; sd.S.tick = 0;
+  sd.render('tick');
+  check('open clock shows 180', el(H,'rd').textContent.includes('180'));
+  check('no countdown at 180', el(H,'cd5').classList.contains('hide'));
+  sd.S.tick = sd.TICKS - 6;
+  sd.render('tick');
+  check('6 seconds left is not the final countdown', el(H,'rd').textContent.includes('6') && el(H,'cd5').classList.contains('hide'));
+  sd.S.tick = sd.TICKS - 5;
+  sd.render('tick');
+  check('5 seconds left shows the top countdown', !el(H,'cd5').classList.contains('hide') && el(H,'cd5').querySelector('b').textContent === '5');
+  eq('countdown does not block clicks', getComputedStyle(el(H,'cd5')).pointerEvents, 'none');
+  eq('trading still allowed at 5 seconds', H.blocked(), 0);
+  const n5 = el(H,'cd5').dataset.n;
+  sd.render('tick');
+  eq('repeating the same 5 second packet does not restart the countdown', el(H,'cd5').dataset.n, n5);
+  sd.S.tick = sd.TICKS - 1;
+  sd.render('tick');
+  eq('1 second left is still tradable', el(H,'cd5').querySelector('b').textContent, '1');
+  eq('blocked stays open at 1 second', H.blocked(), 0);
+  sd.act(0, {s:'AAPL', q:1});
+  eq('a trade fills during the final second', sd.S.pl[0].pos.AAPL, 1);
+  check('that trade did not end the round', sd.S.over !== true && sd.S.tick === sd.TICKS - 1);
+
+  sd.fresh();
+  sd.conn = {open:true, send(m){ sent.length = 0; sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd.S.round = 1; sd.S.R = 5; sd.S.tick = sd.TICKS - 1; sd.S.brk = 0; sd.S.setl = 0;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  eq('hitting 0 starts settlement instead of the next open', sd.S.setl, 1);
+  eq('settlement resets the trading clock', sd.S.tick, 0);
+  eq('news has not started during settlement', sd.S.brk || 0, 0);
+  eq('settlement is round 2 of 5', sd.S.round, 2);
+  check('settlement copy names the closed round and blocks trading', el(H,'phase').textContent.includes('第 1 回合收盤') && el(H,'phase').textContent.includes('不能交易') && el(H,'cd5').classList.contains('hide'));
+  eq('actions lock at settlement, not during the countdown', H.blocked(), 1);
+  const phaseN = el(H,'phase').dataset.n;
+  sd.render('setl');
+  eq('repeating the settlement packet does not rebuild the card', el(H,'phase').dataset.n, phaseN);
+  sd.tick();
+  eq('second settlement second does not consume trading time', sd.S.setl, 2);
+  eq('trading clock stays 0 through settlement', sd.S.tick, 0);
+  sd.tick();
+  eq('third settlement second', sd.S.setl, 3);
+  sd.tick();
+  eq('after 3 settlement seconds the premarket news starts', sd.S.brk, 1);
+  eq('news still has not spent a trading second', sd.S.tick, 0);
+  check('opening line announces premarket news', el(H,'openbar').textContent.includes('第 2 回合') && el(H,'openbar').textContent.includes('盤前新聞'));
+  check('settlement card is gone once news starts', el(H,'phase').classList.contains('hide'));
+  eq('news still blocks trading', H.blocked(), 1);
+  sd.tick();
+  eq('another news second still does not open or advance the trading clock', sd.S.brk, 2);
+  eq('trading clock still 0', sd.S.tick, 0);
+  const openN = el(H,'openbar').dataset.n;
+  sd.render('brk');
+  eq('repeating the news packet does not restart the opening line', el(H,'openbar').dataset.n, openN);
+  H._rdyR = sd.S.round;
+  H._gRdy = sd.S.round;
+  sd.tick();
+  eq('ready handshake still opens the market', sd.S.brk || 0, 0);
+  eq('open clock is a fresh 180', sd.S.tick, 0);
+  check('the board shows 180 after the news', el(H,'rd').textContent.includes('180'));
+
+  const wire = sent[sent.length - 1];
+  G.__SD.isHost = false;
+  G.__SD.me = 1;
+  G.__SD.applyNet(JSON.parse(JSON.stringify(sd.S)));
+  check('guest sees the open clock too', el(G,'rd').textContent.includes('180') && el(G,'cd5').classList.contains('hide'));
+
+  sd.fresh();
+  sd.S.pl[0].cash = 180000;
+  sd.S.pl[1].cash = 90000;
+  sd.S.round = 1; sd.S.R = 1; sd.S.tick = sd.TICKS - 1; sd.S.brk = 0;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  check('final round ends instead of announcing another round', sd.S.over === true && (sd.S.setl || 0) === 0 && (sd.S.brk || 0) === 0);
+  check('final overlay says there is no next round', el(H,'phase').textContent.includes('比賽結束') && el(H,'phase').textContent.includes('沒有下一回合') && !el(H,'phase').textContent.includes('盤前新聞'));
+  check('final news still names the winner', el(H,'news').textContent.includes('恭喜你獲勝'));
+
+  sd.fresh();
+  sd.conn = {open:true, send(m){ sent.length = 0; sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd.S.round = 2; sd.S.R = 5; sd.S.tick = sd.TICKS - 3; sd.S.brk = 0; sd.S.setl = 0;
+  sd.render('tick');
+  check('countdown is up before a bankruptcy', el(H,'cd5').querySelector('b').textContent === '3');
+  sd.S.pl[0].cash = -1;
+  sd.bust();
+  sd.send('full');
+  check('bankruptcy clears the countdown and skips the next-round card', el(H,'cd5').classList.contains('hide') && el(H,'phase').textContent.includes('破產') && el(H,'phase').textContent.includes('沒有下一回合') && !el(H,'openbar').textContent.includes('盤前'));
+  G.__SD.isHost = false;
+  G.__SD.me = 1;
+  G.__SD.applyNet(sent[0]);
+  check('guest locks onto the same bankruptcy', G.__SD.S.over === true && G.__SD.S.bust === 0 && el(G,'news').textContent.includes('對手淨資產低於 0') && el(G,'phase').textContent.includes('沒有下一回合'));
+  G.__SD.conn = {open:true, send(){ throw new Error('guest traded after bankruptcy'); }};
+  G.__SD.sel = 'AAPL';
+  el(G,'dqty').value = '1';
+  G.tradeSel(1);
+  check('guest trade button is locked after the synced result', toastOf(G).includes('比賽已結束'));
+  eq('guest bankruptcy packet did not reveal host holdings', JSON.stringify(G.__SD.S.pl[0].pos), '{}');
+  runShocks(H, G);
+}
+function runShocks(H, G){
+  const sd = H.__SD;
+  const A = () => px(sd, 'AAPL');
+  check('shock odds and flash size are unchanged', sd.tick.toString().includes('Math.random()<.06') && sd.tick.toString().includes('n:3') && sd.tick.toString().includes('.05+Math.random()*.05'));
+  function play(seq){
+    sd.S.tick = 4; sd.S.brk = 0; sd.S.setl = 0; sd.S.over = false;
+    let n = 0;
+    withRandom(H, () => sd.tick(), () => (n < seq.length ? seq[n++] : 0.5));
+  }
+  sd.fresh();
+  dmReset(H); dmReset(G);
+  const sent = [];
+  sd.conn = {open:true, send(m){ sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd.S.pl[0].pos = {NVDA:7};
+  sd.S.log = [{w:0, t:'你 買 7 NVDA'}];
+  play([0.01, 0, 0.9]);
+  check('flash crash hits AAPL once and keeps its three-tick life', A().fl && A().fl.up === false && A().fl.n === 2);
+  check('flash crash is logged with its existing wording', sd.S.log.some(l => l.t.includes('⚡ 閃崩！') && l.t.includes('AAPL') && l.t.includes('程式單狂殺')));
+  check('host sees the flash-crash danmaku', dmAll(H).all.some(t => t.includes('⚡閃崩') && t.includes('AAPL')));
+  const wire = sent[sent.length - 1];
+  check('flash crash sync stays public and hides the host trade', wire.log.some(l => l.pub === 1 && l.dm.includes('閃崩')) && wire.log.every(l => l.w !== 0) && !JSON.stringify(wire.log).includes('買 7') && JSON.stringify(wire.pl[0].pos) === '{}');
+  G.__SD.isHost = false; G.__SD.me = 1;
+  G.__SD.applyNet(wire);
+  check('guest sees the same flash-crash danmaku', dmAll(G).all.some(t => t.includes('⚡閃崩') && t.includes('AAPL')));
+  const gCount = dmAll(G).all.filter(t => t.includes('閃崩')).length;
+  G.__SD.applyNet(JSON.parse(JSON.stringify(wire)));
+  eq('replaying the flash crash does not banner it again', dmAll(G).all.filter(t => t.includes('閃崩')).length, gCount);
+  sd.S.tick = 9;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  eq('the ongoing crash does not banner again on the next price tick', sd.S.log.filter(l => l.t.includes('閃崩')).length, 1);
+  eq('host danmaku is not flooded while the crash continues', dmAll(H).all.filter(t => t.includes('閃崩')).length, 1);
+  check('the crash is still running after that tick', A().fl && A().fl.n === 1);
+
+  sd.fresh();
+  dmReset(H); dmReset(G);
+  sent.length = 0;
+  sd.conn = {open:true, send(m){ sent.push(JSON.parse(JSON.stringify(m))); }};
+  play([0.01, 0.15, 0]);
+  check('short squeeze is logged for TSLA', sd.S.log.some(l => l.t.includes('🚀 軋空！') && l.t.includes('TSLA')) && px(sd,'TSLA').fl && px(sd,'TSLA').fl.up === true);
+  check('host sees the squeeze danmaku', dmAll(H).all.some(t => t.includes('🚀軋空') && t.includes('TSLA')));
+  G.__SD.applyNet(sent[sent.length - 1]);
+  check('guest sees the squeeze danmaku', dmAll(G).all.some(t => t.includes('🚀軋空') && t.includes('TSLA')));
+
+  sd.fresh();
+  dmReset(H); dmReset(G);
+  sd.S.round = 2;
+  sd.S.pend = [{s:'AAPL', g:0, dl:'財報造假'}];
+  withRandom(H, () => sd.newsCard(), () => 0.5);
+  sd.render('full');
+  check('delisting keeps the full reason in the log', sd.S.log.some(l => l.t.includes('☠️ AAPL 下市！') && l.t.includes('財報造假')));
+  check('host delisting danmaku names the stock and the reason', dmAll(H).all.some(t => t.includes('☠️下市') && t.includes('AAPL') && t.includes('財報造假')));
+  const long = '這是一段很長的下市原因用來測試縮寫';
+  sd.fresh();
+  dmReset(H);
+  sd.S.round = 2;
+  sd.S.pend = [{s:'MSFT', g:0, dl:long}];
+  withRandom(H, () => sd.newsCard(), () => 0.5);
+  sd.render('full');
+  const ms = dmAll(H).all.find(t => t.includes('MSFT'));
+  check('a long delisting reason is shortened on the banner and kept in the log', !!ms && ms.includes('…') && sd.S.log.some(l => l.t.includes(long)));
+
+  sd.fresh();
+  dmReset(H);
+  play([0.01, 0, 0.9]);
+  sd.act(1, {s:'TSLA', pw:1});
+  const mix = dmAll(H).all;
+  check('a market shock and an item notice share the queue', mix.some(t => t.includes('⚡閃崩') && t.includes('AAPL')) && mix.some(t => t.includes('🚀拉抬') && t.includes('TSLA')) && mix.length >= 2);
+}
+
+async function runVisual(H, G){
+  window.__bus = {peers:{}};
+  H.__SD.conn = null;
+  G.__SD.conn = null;
+  installPeer(H);
+  installPeer(G);
+  H.__clearInts();
+  G.__clearInts();
+  G.__SD.S = null;
+  H.host();
+  const code = await waitFor(() => {
+    const n = H.document.querySelector('.code');
+    return n && n.textContent.trim().length === 6 ? n.textContent.trim() : '';
+  });
+  el(G,'code').value = code;
+  G.join();
+  await waitFor(() => G.__SD.S && !el(G,'game').classList.contains('hide'));
+  H.__clearInts();
+  G.__clearInts();
+
+  const sd = H.__SD;
+  sd.S.brk = 0;
+  sd.S.over = false;
+  sd.S.round = 2;
+  sd.S.R = 5;
+  sd.S.tick = 40;
+  sd.S.snap = [sd.START, sd.START];
+  sd.S.tv = {s:'AAPL', t:'📺 第 2 回合進行中'};
+  sd.S.st.forEach(x => { x.p = 100; x.o = 100; x.d = 0; x.nd = 0; x.fl = 0; x.dl = 0; x.hist = [100]; x.prev = [100]; });
+  sd.S.pl[0].cash = sd.START; sd.S.pl[0].pos = {}; sd.S.pl[0].cost = {};
+  sd.S.pl[1].cash = sd.START; sd.S.pl[1].pos = {}; sd.S.pl[1].cost = {};
+  sd.send('full');
+  await waitFor(() => G.__SD.S && G.__SD.S.brk === 0 && px(G.__SD, 'AAPL').p === 100);
+
+  status('開局：雙方都看得到淨資產');
+  await pause(1200);
+
+  sd.sel = 'AAPL';
+  el(H,'dqty').value = '400';
+  sd.tradeSel(1);
+  await sleep(30);
+  G.__SD.sel = 'TSLA';
+  el(G,'dqty').value = '500';
+  G.__SD.tradeSel(-1);
+  await waitFor(() => sd.S.pl[1].pos.TSLA === -500 && sd.S.pl[0].pos.AAPL === 400);
+  px(sd,'AAPL').p = 180;
+  px(sd,'TSLA').p = 160;
+  sd.send('prices');
+  await waitFor(() => px(G.__SD,'AAPL').p === 180 && el(G,'e0').textContent === el(H,'e0').textContent && el(G,'e1').textContent === el(H,'e1').textContent);
+
+  eq('host long marks to 132,000', sd.eq(0), 132000);
+  eq('guest short marks to 70,000', sd.eq(1), 70000);
+  eq('both screens show the host equity', el(G,'e0').textContent, el(H,'e0').textContent);
+  eq('both screens show the guest equity', el(G,'e1').textContent, el(H,'e1').textContent);
+  eq('displayed host equity matches the books', el(H,'e0').textContent, sd.money(132000));
+  eq('displayed guest equity matches the books', el(H,'e1').textContent, sd.money(70000));
+  check('live numbers are not the round-start snap', el(H,'e0').textContent !== sd.money(sd.S.snap[0]) && el(H,'e1').textContent !== sd.money(sd.S.snap[1]));
+  check('round clock is still mid-match', el(H,'rd').textContent.includes('第 2/5') && el(H,'rd').textContent.includes(String(sd.TICKS - 40)));
+  eq('guest local host-equity from hidden holdings is zero', G.__SD.eq(0), 0);
+  check('guest display uses the streamed nav', G.__SD.shownEq(0) === 132000 && JSON.stringify(G.__SD.S.pl[0].pos) === '{}');
+  const hh = holds(H), gh = holds(G);
+  check('host sees their own 400 AAPL shares', hh.some(r => r.s === 'AAPL' && r.h.includes('400')));
+  check('host does not show the guest short as their holding', hh.some(r => r.s === 'TSLA' && r.h.includes('持有 0')));
+  check('guest does not see the host 400 shares', gh.some(r => r.s === 'AAPL' && r.h.includes('持有 0') && !r.h.includes('400')));
+  check('guest sees their own short', gh.some(r => r.s === 'TSLA' && r.h.includes('-500')));
+  check('guest labels the host card as hidden holdings', el(G,'p0').innerHTML.includes('持股不公開') && !el(G,'p0').innerHTML.includes('上回合'));
+  check('guest log does not include the host buy', !JSON.stringify(G.__SD.S.log).includes('400'));
+
+  status('股價變動後，兩邊淨資產同時更新；挑戰者看不到房主的 400 股');
+  await pause(1800);
+
+  const c = G.__SD.conn;
+  const orig = c.send.bind(c);
+  let sends = 0;
+  c.send = m => { sends++; return orig(m); };
+  G.__SD.sel = 'AAPL';
+  el(G,'dqty').value = '2000';
+  G.__SD.tradeSel(-1);
+  eq('over-cap click does not send an order', sends, 0);
+  check('over-cap toast names $200,000', toastOf(G).includes('$200,000'));
+  freezeToast(G);
+  sd.act(1, {s:'AAPL', q:-2000});
+  eq('host also rejects a bypassed over-cap short', sd.S.pl[1].pos.AAPL || 0, 0);
+  eq('host long is unchanged by the rejected short', sd.S.pl[0].pos.AAPL, 400);
+  status('做空總成本超過 $200,000，下單被拒絕；兩邊淨資產仍是 $132,000 與 $70,000');
+  await pause(2200);
+}
+
+async function main(){
+  status('等待兩頁載入…');
+  const H = await waitFor(() => {
+    const w = document.getElementById('host').contentWindow;
+    return w && w.__SD && w.__SD.fresh ? w : null;
+  }, 15000);
+  const G = await waitFor(() => {
+    const w = document.getElementById('guest').contentWindow;
+    return w && w.__SD && w.__SD.fresh ? w : null;
+  }, 15000);
+  [H, G].forEach(win => {
+    win.alert = m => { throw new Error('alert: ' + m); };
+    wrapIntervals(win);
+  });
+  if (MODE === 'assert') { runUnit(H, G); runExtra(H, G); }
+  H.__clearInts();
+  G.__clearInts();
+  await runVisual(H, G);
+  if (H.document.fonts && H.document.fonts.ready) await H.document.fonts.ready;
+  window.__result = {ok:true, log, host: el(H,'e0').textContent, guest: el(H,'e1').textContent};
+}
+
+document.getElementById('play').hidden = MODE === 'assert';
+document.getElementById('play').addEventListener('click', () => {
+  document.getElementById('play').disabled = true;
+  main().catch(e => { window.__result = {ok:false, error:String(e && e.stack || e), log}; status(e.message || String(e)); });
+});
+if (MODE === 'assert') {
+  main().catch(e => { window.__result = {ok:false, error:String(e && e.stack || e), log}; status(e.message || String(e)); });
+} else {
+  status('按「播放測試」開始：兩邊淨資產與 $200,000 做空上限');
+}
+</script>
+</body>
+</html>
