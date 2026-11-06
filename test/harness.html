@@ -733,6 +733,41 @@ function runShocks(H, G){
   check('a market shock and an item notice share the queue', mix.some(t => t.includes('⚡閃崩') && t.includes('AAPL')) && mix.some(t => t.includes('🚀拉抬') && t.includes('TSLA')) && mix.length >= 2);
 }
 
+function runNews(H){
+  const sd = H.__SD;
+  const NEWS = sd.NEWS, TK = sd.TK;
+  const symbols = TK.map(k => k[0]);
+  function eligible(sign){
+    return NEWS.filter(x => Math.sign(x[1]) === sign && TK.some(k => k[0] === x[0]));
+  }
+  const bull = eligible(1), bear = eligible(-1), zero = eligible(0);
+  eq('runtime eligible bullish headlines', bull.length, 50);
+  eq('runtime eligible bearish headlines', bear.length, 50);
+  eq('runtime eligible nonsense headlines', zero.length, 30);
+  eq('every stored headline is eligible', bull.length + bear.length + zero.length, NEWS.length);
+  check('no market-wide or retired symbol can be drawn', NEWS.every(x => symbols.includes(x[0])));
+  symbols.forEach(sym => {
+    eq(sym + ' bullish', NEWS.filter(x => x[0] === sym && x[1] > 0).length, 5);
+    eq(sym + ' bearish', NEWS.filter(x => x[0] === sym && x[1] < 0).length, 5);
+    eq(sym + ' nonsense', NEWS.filter(x => x[0] === sym && x[1] === 0).length, 3);
+  });
+  const texts = NEWS.map(x => x[2]);
+  eq('headlines are distinct', new Set(texts).size, texts.length);
+  const blob = texts.join('\n');
+  ['浴室','小腿骨折','地球是平','世界是平','馬斯克在浴室','跌倒'].forEach(w => {
+    check('excluded phrase absent: ' + w, !blob.includes(w));
+  });
+  check('draw odds stay 5:5:3', sd.newsCard.toString().includes('Math.random()*13') && sd.newsCard.toString().includes('_r<5?1:_r<10?-1:0'));
+  sd.fresh();
+  const allowed = new Set(texts);
+  for (let i = 0; i < 60; i++) {
+    sd.newsCard();
+    const line = sd.S.news.replace(/^第 \d+ 回合快訊：/, '');
+    if (!allowed.has(line)) throw new Error('undrawable headline ' + line);
+  }
+  log.push('PASS sixty live draws stay inside the eligible list');
+}
+
 async function runVisual(H, G){
   window.__bus = {peers:{}};
   H.__SD.conn = null;
@@ -835,7 +870,7 @@ async function main(){
     win.alert = m => { throw new Error('alert: ' + m); };
     wrapIntervals(win);
   });
-  if (MODE === 'assert') { runUnit(H, G); runExtra(H, G); }
+  if (MODE === 'assert') { runUnit(H, G); runExtra(H, G); runNews(H); }
   H.__clearInts();
   G.__clearInts();
   await runVisual(H, G);
