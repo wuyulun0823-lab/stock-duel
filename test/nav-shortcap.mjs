@@ -213,6 +213,26 @@ async function main(){
     await sleep(200);
     await screenshot(cdp, path.join(ARTIFACTS, 'guest_live_nav_mobile.png'));
     await cdp.send('Emulation.setDeviceMetricsOverride', {width: 1500, height: 1200, deviceScaleFactor: 1, mobile: false});
+    await evaluate(cdp, `(() => {
+      document.getElementById('pane-host').style.display = '';
+      const H = document.getElementById('host').contentWindow;
+      const sd = H.__SD;
+      sd.S.round = 2; sd.S.R = 5; sd.S.tick = sd.TICKS - 4;
+      sd.S.brk = 0; sd.S.setl = 0; sd.S.over = false;
+      sd.send('tick');
+    })()`);
+    await sleep(300);
+    await screenshot(cdp, path.join(ARTIFACTS, 'final_five_countdown.png'));
+    await evaluate(cdp, `(() => {
+      const H = document.getElementById('host').contentWindow;
+      const sd = H.__SD;
+      sd.S.round = 2; sd.S.R = 5; sd.S.tick = sd.TICKS - 1; sd.S.brk = 0; sd.S.setl = 0; sd.S.over = false;
+      const rnd = H.Math.random;
+      H.Math.random = () => 0.5;
+      try { sd.tick(); } finally { H.Math.random = rnd; }
+    })()`);
+    await sleep(300);
+    await screenshot(cdp, path.join(ARTIFACTS, 'round_settlement.png'));
 
     await cdp.send('Page.navigate', {url: origin + '/index.html'});
     await sleep(500);
@@ -257,7 +277,8 @@ async function main(){
   } finally {
     try { chrome.kill('SIGKILL'); } catch {}
     server.close();
-    await rm(profile, {recursive: true, force: true});
+    await sleep(200);
+    try { await rm(profile, {recursive: true, force: true, maxRetries: 3, retryDelay: 200}); } catch (e) { console.error('profile cleanup:', e.message); }
   }
 }
 

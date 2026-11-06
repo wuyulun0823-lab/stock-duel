@@ -130,8 +130,8 @@ function runUnit(H, G){
   check('help says net assets are live', html.includes('淨資產對戰中即時顯示'));
   check('old 100k cap text is gone', !html.includes('$100,000') && !html.includes('上回合'));
   check('no margin, share cap, last-5s, or negative-equity ban in source',
-    !html.includes('marginCall') && !html.includes('強制回補') && !html.includes('最後 5 秒') &&
-    !html.includes('單檔最多') && !html.includes('資產為負') && !html.includes('SH_MAX'));
+    !html.includes('marginCall') && !html.includes('強制回補') && !html.includes('最後 5 秒禁止') &&
+    !html.includes('禁止新增空單') && !html.includes('單檔最多') && !html.includes('資產為負，禁止') && !html.includes('SH_MAX'));
   check('tick and shortErr do not call removed rules',
     !sd.tick.toString().includes('marginCall') && !sd.shortErr.toString().includes('SH_MAX') &&
     !sd.shortErr.toString().includes('TICKS-5'));
@@ -189,7 +189,7 @@ function runUnit(H, G){
   sd.S.pl[1].pos = {AAPL:-10};
   px(sd,'AAPL').p = 50;
   sd.S.pend = [{s:'AAPL', g:0, dl:'測試下市'}];
-  sd.S.tick = 119; sd.S.round = 1; sd.S.R = 5;
+  sd.S.tick = sd.TICKS - 1; sd.S.round = 1; sd.S.R = 5;
   const dPre0 = sd.eq(0), dPre1 = sd.eq(1);
   withRandom(H, () => sd.tick(), () => 0.5);
   eq('round snap is equity before the news delist', sd.S.snap[0], dPre0);
@@ -218,7 +218,7 @@ function runUnit(H, G){
   sd.fresh();
   sd.S.pl[0].cash = 180000;
   sd.S.pl[1].cash = 90000;
-  sd.S.round = 1; sd.S.R = 1; sd.S.tick = 119; sd.S.brk = 0;
+  sd.S.round = 1; sd.S.R = 1; sd.S.tick = sd.TICKS - 1; sd.S.brk = 0;
   withRandom(H, () => sd.tick(), () => 0.5);
   check('final snap matches equity at the whistle', sd.S.over === true && sd.S.snap[0] === 180000 && sd.S.snap[1] === 90000);
   eq('final HUD matches that equity', el(H,'e0').textContent, sd.money(180000));
@@ -386,6 +386,250 @@ function runUnit(H, G){
   check('guest toast states the 200,000 cap', toastOf(H).includes('$200,000'));
 }
 
+function near(name, a, b){
+  status(name);
+  if (!(Math.abs(a - b) < 1e-9)) throw new Error('FAIL: ' + name + '\n  got ' + a + '\n  exp ' + b);
+  log.push('PASS ' + name);
+}
+function runExtra(H, G){
+  const sd = H.__SD;
+  const A = () => px(sd, 'AAPL');
+  check('trading round is 180 seconds', sd.TICKS === 180);
+  check('help says 180 seconds and separate premarket time', H.document.body.textContent.includes('180 秒') && H.document.body.textContent.includes('盤前新聞'));
+  check('market noise and news formula are not scaled by the item boost', sd.tick.toString().includes('.045') && !sd.tick.toString().includes('PW_HIT') && sd.newsCard.toString().includes('.15+Math.random()*.1'));
+  near('pump hit is the old 6% times 1.3', sd.PW_HIT, 0.06 * 1.3);
+  near('pump drift is the old 0.03 times 1.3', sd.PW_DRIFT, 0.03 * 1.3);
+  near('snipe floor is the old 8% times 1.3', sd.SN_LO, 0.08 * 1.3);
+  near('snipe span is the old 7% times 1.3', sd.SN_RNG, 0.07 * 1.3);
+
+  sd.fresh();
+  if (el(H,'toast')) el(H,'toast').textContent = '';
+  sd.act(0, {s:'AAPL', pw:1});
+  eq('拉抬 moves 100 to 107.80, not the old 106', A().p, +((100 * (1 + sd.PW_HIT)).toFixed(2)));
+  near('拉抬 drift seed is 0.039 and is not applied twice', A().d, sd.PW_DRIFT);
+  eq('拉抬 still spends one charge and a 10 second cooldown', sd.S.pl[0].up, 3);
+  eq('cooldown stays 10', sd.S.pl[0].cd, 10);
+  eq('other names are not moved by 拉抬', px(sd,'TSLA').p, 100);
+  check('own item is logged with actor and ticker', sd.S.log[0].t.includes('房主使用了🚀拉抬') && sd.S.log[0].t.includes('AAPL'));
+  check('own item does not raise the opponent toast', !(toastOf(H).includes('使用了')));
+  const id0 = H._iev;
+  sd.S.pl[0].cd = 5;
+  sd.act(0, {s:'TSLA', pw:1});
+  eq('cooldown rejection creates no item event', H._iev, id0);
+  eq('cooldown rejection does not change the target', px(sd,'TSLA').p, 100);
+  sd.fresh();
+  sd.S.pl[0].sn = 0;
+  const id1 = H._iev || 0;
+  sd.act(0, {s:'AAPL', sn:1});
+  eq('empty sniper creates no event', H._iev || 0, id1);
+  sd.S.pl[0].sn = 4;
+  A().dl = '下市';
+  sd.act(0, {s:'AAPL', pw:1});
+  eq('delisted target rejects the item', sd.S.pl[0].up, 4);
+  sd.S.brk = 2;
+  sd.act(0, {s:'TSLA', sn:1});
+  eq('news break rejects items', sd.S.pl[0].sn, 4);
+
+  sd.fresh();
+  withRandom(H, () => sd.act(0, {s:'NVDA', sn:1}), () => 0);
+  eq('sniper low end is 10.4% down, not the old 8%', px(sd,'NVDA').p, +((100 * (1 - sd.SN_LO)).toFixed(2)));
+  eq('sniper has no second-stage drift', px(sd,'NVDA').d || 0, 0);
+  check('sniper log names the stock and the percent', sd.S.log[0].t.includes('🎯狙擊') && sd.S.log[0].t.includes('NVDA') && sd.S.log[0].t.includes('10.4%'));
+  sd.fresh();
+  let k = 0;
+  const seq = [0.99, 1];
+  withRandom(H, () => sd.act(0, {s:'NVDA', sn:1}), () => seq[k++]);
+  eq('sniper high end is 19.5% up, not the old 15%', px(sd,'NVDA').p, +((100 * (1 + sd.SN_LO + sd.SN_RNG)).toFixed(2)));
+
+  sd.fresh();
+  sd.act(0, {s:'AAPL', pw:1});
+  sd.S.tick = 4;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  const p1 = +((100 * (1 + sd.PW_HIT)).toFixed(2));
+  eq('next price tick adds the drift once', A().p, +((p1 * (1 + sd.PW_DRIFT)).toFixed(2)));
+  near('drift then decays by 0.8 and is not scaled again', A().d, sd.PW_DRIFT * 0.8);
+  check('that quiet tick did not bankrupt a flat book', sd.S.over !== true);
+  sd.fresh();
+  A().p = 100;
+  sd.S.tick = 1;
+  withRandom(H, () => sd.tick(), () => 0.99);
+  eq('price still changes only every 5 seconds', A().p, 100);
+
+  sd.fresh();
+  const sent = [];
+  sd.conn = {open:true, send(m){ sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd.act(0, {s:'AAPL', q:10});
+  sd.act(0, {s:'TSLA', pw:-1});
+  const msg = sent[sent.length - 1];
+  check('item sync is public and host trades stay off it', msg.log.some(l => l.by === 0 && l.t.includes('💣砸盤') && l.t.includes('TSLA')) && msg.log.every(l => l.w !== 0) && JSON.stringify(msg.pl[0].pos) === '{}');
+  G.__SD.isHost = false;
+  G.__SD.me = 1;
+  if (el(G,'toast')) el(G,'toast').textContent = '';
+  G.__SD.applyNet(msg);
+  check('guest is told the host item and ticker once', toastOf(G).includes('房主使用了💣砸盤') && toastOf(G).includes('TSLA'));
+  check('guest log keeps that item', el(G,'log').textContent.includes('💣砸盤') && el(G,'log').textContent.includes('TSLA'));
+  el(G,'toast').textContent = '';
+  G.__SD.applyNet(JSON.parse(JSON.stringify(msg)));
+  eq('replaying the full state does not toast again', toastOf(G), '');
+  G.__SD.applyNet({_sync:'tick', tick:msg.tick, round:msg.round, R:msg.R, brk:0, setl:0, endR:0, over:false, snap:msg.snap, nav:msg.nav, pl:msg.pl, log:msg.log});
+  eq('a later tick with the same item does not toast again', toastOf(G), '');
+
+  sd.fresh();
+  if (el(H,'toast')) el(H,'toast').textContent = '';
+  sd.act(1, {s:'NVDA', pw:1});
+  check('host is told the guest item and ticker', toastOf(H).includes('挑戰者使用了🚀拉抬') && toastOf(H).includes('NVDA'));
+  el(H,'toast').textContent = '';
+  sd.render('tick');
+  eq('host render of the same item does not toast again', toastOf(H), '');
+  H.openInv();
+  const inv = el(H,'invb').textContent;
+  check('inventory states the scaled strengths', inv.includes('+7.8%') && inv.includes('−7.8%') && inv.includes('10.4～19.5%'));
+  check('inventory no longer states the old percents', !inv.includes('+6%') && !inv.includes('8～15%'));
+  el(H,'inv').classList.add('hide');
+
+  sd.fresh();
+  sd.S.pl[0].cash = -5000;
+  sd.S.pl[0].pos = {AAPL:100};
+  A().p = 100;
+  sd.bust();
+  check('negative cash with positive equity is not bankruptcy', sd.S.over !== true && sd.eq(0) === 5000);
+  sd.fresh();
+  sd.S.pl[0].cash = 0;
+  sd.bust();
+  check('exactly zero equity does not lose', sd.S.over !== true && sd.eq(0) === 0);
+  sd.S.pl[1].cash = 1000;
+  sd.S.pl[1].pos = {TSLA:-10};
+  px(sd,'TSLA').p = 100;
+  sd.bust();
+  check('a marked short at exactly zero does not lose', sd.S.over !== true && sd.eq(1) === 0);
+
+  sd.fresh();
+  sd.S.pl[1].cash = -25;
+  sd.bust();
+  sd.render('full');
+  check('only the negative book loses', sd.S.over === true && sd.S.bust === 1 && sd.S.snap[1] === -25 && sd.S.snap[0] === sd.START);
+  check('host sees the guest bankruptcy reason', el(H,'news').textContent.includes('對手淨資產低於 0'));
+  check('bankruptcy log is explicit', sd.S.log[0].t.includes('挑戰者淨資產低於 0'));
+  const busts = sd.S.log.filter(l => l.t.includes('破產')).length;
+  sd.bust();
+  eq('bankruptcy does not fire twice', sd.S.log.filter(l => l.t.includes('破產')).length, busts);
+  const locked = px(sd,'AAPL').p;
+  const up = sd.S.pl[0].up;
+  sd.act(0, {s:'AAPL', pw:1});
+  eq('items are refused after bankruptcy', sd.S.pl[0].up, up);
+  sd.tick();
+  eq('ticks stop after bankruptcy', px(sd,'AAPL').p, locked);
+  check('bankruptcy overlay does not promise another round', el(H,'phase').textContent.includes('沒有下一回合') && el(H,'phase').textContent.includes('破產'));
+  check('countdown is gone after bankruptcy', el(H,'cd5').classList.contains('hide'));
+
+  sd.fresh();
+  sd.S.pl[0].cash = 1000; sd.S.pl[0].pos = {AAPL:-10};
+  sd.S.pl[1].cash = 1000; sd.S.pl[1].pos = {AAPL:-10};
+  A().p = 100; A().d = 0.5; sd.S.tick = 4;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  eq('one price tick that sinks both books is a draw', sd.S.bust, 2);
+  check('draw copy names both players', el(H,'news').textContent.includes('同時低於 0') && sd.S.log.filter(l => l.t.includes('破產平手')).length === 1);
+  const bothP = A().p;
+  sd.tick();
+  eq('draw also freezes the tape', A().p, bothP);
+
+  sd.fresh();
+  sd.S.round = 2; sd.S.R = 5; sd.S.brk = 0; sd.S.setl = 0; sd.S.over = false; sd.S.tick = 0;
+  sd.render('tick');
+  check('open clock shows 180', el(H,'rd').textContent.includes('180'));
+  check('no countdown at 180', el(H,'cd5').classList.contains('hide'));
+  sd.S.tick = sd.TICKS - 6;
+  sd.render('tick');
+  check('6 seconds left is not the final countdown', el(H,'rd').textContent.includes('6') && el(H,'cd5').classList.contains('hide'));
+  sd.S.tick = sd.TICKS - 5;
+  sd.render('tick');
+  check('5 seconds left shows the top countdown', !el(H,'cd5').classList.contains('hide') && el(H,'cd5').querySelector('b').textContent === '5');
+  eq('countdown does not block clicks', getComputedStyle(el(H,'cd5')).pointerEvents, 'none');
+  eq('trading still allowed at 5 seconds', H.blocked(), 0);
+  const n5 = el(H,'cd5').dataset.n;
+  sd.render('tick');
+  eq('repeating the same 5 second packet does not restart the countdown', el(H,'cd5').dataset.n, n5);
+  sd.S.tick = sd.TICKS - 1;
+  sd.render('tick');
+  eq('1 second left is still tradable', el(H,'cd5').querySelector('b').textContent, '1');
+  eq('blocked stays open at 1 second', H.blocked(), 0);
+  sd.act(0, {s:'AAPL', q:1});
+  eq('a trade fills during the final second', sd.S.pl[0].pos.AAPL, 1);
+  check('that trade did not end the round', sd.S.over !== true && sd.S.tick === sd.TICKS - 1);
+
+  sd.fresh();
+  sd.conn = {open:true, send(m){ sent.length = 0; sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd.S.round = 1; sd.S.R = 5; sd.S.tick = sd.TICKS - 1; sd.S.brk = 0; sd.S.setl = 0;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  eq('hitting 0 starts settlement instead of the next open', sd.S.setl, 1);
+  eq('settlement resets the trading clock', sd.S.tick, 0);
+  eq('news has not started during settlement', sd.S.brk || 0, 0);
+  eq('settlement is round 2 of 5', sd.S.round, 2);
+  check('settlement copy names the closed round and blocks trading', el(H,'phase').textContent.includes('第 1 回合收盤') && el(H,'phase').textContent.includes('不能交易') && el(H,'cd5').classList.contains('hide'));
+  eq('actions lock at settlement, not during the countdown', H.blocked(), 1);
+  const phaseN = el(H,'phase').dataset.n;
+  sd.render('setl');
+  eq('repeating the settlement packet does not rebuild the card', el(H,'phase').dataset.n, phaseN);
+  sd.tick();
+  eq('second settlement second does not consume trading time', sd.S.setl, 2);
+  eq('trading clock stays 0 through settlement', sd.S.tick, 0);
+  sd.tick();
+  eq('third settlement second', sd.S.setl, 3);
+  sd.tick();
+  eq('after 3 settlement seconds the premarket news starts', sd.S.brk, 1);
+  eq('news still has not spent a trading second', sd.S.tick, 0);
+  check('opening line announces premarket news', el(H,'openbar').textContent.includes('第 2 回合') && el(H,'openbar').textContent.includes('盤前新聞'));
+  check('settlement card is gone once news starts', el(H,'phase').classList.contains('hide'));
+  eq('news still blocks trading', H.blocked(), 1);
+  sd.tick();
+  eq('another news second still does not open or advance the trading clock', sd.S.brk, 2);
+  eq('trading clock still 0', sd.S.tick, 0);
+  const openN = el(H,'openbar').dataset.n;
+  sd.render('brk');
+  eq('repeating the news packet does not restart the opening line', el(H,'openbar').dataset.n, openN);
+  H._rdyR = sd.S.round;
+  H._gRdy = sd.S.round;
+  sd.tick();
+  eq('ready handshake still opens the market', sd.S.brk || 0, 0);
+  eq('open clock is a fresh 180', sd.S.tick, 0);
+  check('the board shows 180 after the news', el(H,'rd').textContent.includes('180'));
+
+  const wire = sent[sent.length - 1];
+  G.__SD.isHost = false;
+  G.__SD.me = 1;
+  G.__SD.applyNet(JSON.parse(JSON.stringify(sd.S)));
+  check('guest sees the open clock too', el(G,'rd').textContent.includes('180') && el(G,'cd5').classList.contains('hide'));
+
+  sd.fresh();
+  sd.S.pl[0].cash = 180000;
+  sd.S.pl[1].cash = 90000;
+  sd.S.round = 1; sd.S.R = 1; sd.S.tick = sd.TICKS - 1; sd.S.brk = 0;
+  withRandom(H, () => sd.tick(), () => 0.5);
+  check('final round ends instead of announcing another round', sd.S.over === true && (sd.S.setl || 0) === 0 && (sd.S.brk || 0) === 0);
+  check('final overlay says there is no next round', el(H,'phase').textContent.includes('比賽結束') && el(H,'phase').textContent.includes('沒有下一回合') && !el(H,'phase').textContent.includes('盤前新聞'));
+  check('final news still names the winner', el(H,'news').textContent.includes('恭喜你獲勝'));
+
+  sd.fresh();
+  sd.conn = {open:true, send(m){ sent.length = 0; sent.push(JSON.parse(JSON.stringify(m))); }};
+  sd.S.round = 2; sd.S.R = 5; sd.S.tick = sd.TICKS - 3; sd.S.brk = 0; sd.S.setl = 0;
+  sd.render('tick');
+  check('countdown is up before a bankruptcy', el(H,'cd5').querySelector('b').textContent === '3');
+  sd.S.pl[0].cash = -1;
+  sd.bust();
+  sd.send('full');
+  check('bankruptcy clears the countdown and skips the next-round card', el(H,'cd5').classList.contains('hide') && el(H,'phase').textContent.includes('破產') && el(H,'phase').textContent.includes('沒有下一回合') && !el(H,'openbar').textContent.includes('盤前'));
+  G.__SD.isHost = false;
+  G.__SD.me = 1;
+  G.__SD.applyNet(sent[0]);
+  check('guest locks onto the same bankruptcy', G.__SD.S.over === true && G.__SD.S.bust === 0 && el(G,'news').textContent.includes('對手淨資產低於 0') && el(G,'phase').textContent.includes('沒有下一回合'));
+  G.__SD.conn = {open:true, send(){ throw new Error('guest traded after bankruptcy'); }};
+  G.__SD.sel = 'AAPL';
+  el(G,'dqty').value = '1';
+  G.tradeSel(1);
+  check('guest trade button is locked after the synced result', toastOf(G).includes('比賽已結束'));
+  eq('guest bankruptcy packet did not reveal host holdings', JSON.stringify(G.__SD.S.pl[0].pos), '{}');
+}
+
 async function runVisual(H, G){
   window.__bus = {peers:{}};
   H.__SD.conn = null;
@@ -443,7 +687,7 @@ async function runVisual(H, G){
   eq('displayed host equity matches the books', el(H,'e0').textContent, sd.money(132000));
   eq('displayed guest equity matches the books', el(H,'e1').textContent, sd.money(70000));
   check('live numbers are not the round-start snap', el(H,'e0').textContent !== sd.money(sd.S.snap[0]) && el(H,'e1').textContent !== sd.money(sd.S.snap[1]));
-  check('round clock is still mid-match', el(H,'rd').textContent.includes('第 2/5') && el(H,'rd').textContent.includes('80'));
+  check('round clock is still mid-match', el(H,'rd').textContent.includes('第 2/5') && el(H,'rd').textContent.includes(String(sd.TICKS - 40)));
   eq('guest local host-equity from hidden holdings is zero', G.__SD.eq(0), 0);
   check('guest display uses the streamed nav', G.__SD.shownEq(0) === 132000 && JSON.stringify(G.__SD.S.pl[0].pos) === '{}');
   const hh = holds(H), gh = holds(G);
@@ -488,7 +732,7 @@ async function main(){
     win.alert = m => { throw new Error('alert: ' + m); };
     wrapIntervals(win);
   });
-  if (MODE === 'assert') runUnit(H, G);
+  if (MODE === 'assert') { runUnit(H, G); runExtra(H, G); }
   H.__clearInts();
   G.__clearInts();
   await runVisual(H, G);
