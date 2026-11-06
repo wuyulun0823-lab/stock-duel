@@ -51,6 +51,16 @@ function toastOf(win){
   const t = el(win, 'toast');
   return t ? t.textContent : '';
 }
+function dmAll(win){
+  const nodes = [...win.document.querySelectorAll('#dm .dm')].map(n => n.textContent);
+  const q = (win._dmQ || []).map(j => j.text);
+  return {nodes, q, all: nodes.concat(q)};
+}
+function dmReset(win){
+  win._dmQ = [];
+  win._dmFree = [0, 0];
+  win.document.querySelectorAll('#dm .dm').forEach(n => { clearTimeout(n._end); clearTimeout(n._t); n.remove(); });
+}
 function freezeToast(win){
   const t = el(win, 'toast');
   if (!t) return;
@@ -411,7 +421,7 @@ function runExtra(H, G){
   eq('cooldown stays 10', sd.S.pl[0].cd, 10);
   eq('other names are not moved by 拉抬', px(sd,'TSLA').p, 100);
   check('own item is logged with actor and ticker', sd.S.log[0].t.includes('房主使用了🚀拉抬') && sd.S.log[0].t.includes('AAPL'));
-  check('own item does not raise the opponent toast', !(toastOf(H).includes('使用了')));
+  check('own item does not fire a danmaku banner', dmAll(H).all.length === 0);
   const id0 = H._iev;
   sd.S.pl[0].cd = 5;
   sd.act(0, {s:'TSLA', pw:1});
@@ -466,21 +476,44 @@ function runExtra(H, G){
   G.__SD.me = 1;
   if (el(G,'toast')) el(G,'toast').textContent = '';
   G.__SD.applyNet(msg);
-  check('guest is told the host item and ticker once', toastOf(G).includes('房主使用了💣砸盤') && toastOf(G).includes('TSLA'));
+  const gdm = dmAll(G);
+  check('guest danmaku names the host item and ticker', gdm.all.some(t => t.includes('房主') && t.includes('💣砸盤') && t.includes('TSLA')));
+  check('guest danmaku does not block taps', gdm.nodes.length > 0 && getComputedStyle(G.document.querySelector('#dm .dm')).pointerEvents === 'none' && getComputedStyle(G.document.getElementById('dm')).pointerEvents === 'none');
   check('guest log keeps that item', el(G,'log').textContent.includes('💣砸盤') && el(G,'log').textContent.includes('TSLA'));
-  el(G,'toast').textContent = '';
+  const gCount = gdm.all.length;
   G.__SD.applyNet(JSON.parse(JSON.stringify(msg)));
-  eq('replaying the full state does not toast again', toastOf(G), '');
+  eq('replaying the full state does not add another danmaku', dmAll(G).all.length, gCount);
   G.__SD.applyNet({_sync:'tick', tick:msg.tick, round:msg.round, R:msg.R, brk:0, setl:0, endR:0, over:false, snap:msg.snap, nav:msg.nav, pl:msg.pl, log:msg.log});
-  eq('a later tick with the same item does not toast again', toastOf(G), '');
+  eq('a later tick with the same item does not add another danmaku', dmAll(G).all.length, gCount);
 
   sd.fresh();
   if (el(H,'toast')) el(H,'toast').textContent = '';
   sd.act(1, {s:'NVDA', pw:1});
-  check('host is told the guest item and ticker', toastOf(H).includes('挑戰者使用了🚀拉抬') && toastOf(H).includes('NVDA'));
-  el(H,'toast').textContent = '';
+  check('host danmaku names the guest item and ticker', dmAll(H).all.some(t => t.includes('挑戰者') && t.includes('🚀拉抬') && t.includes('NVDA')));
+  const hCount = dmAll(H).all.length;
   sd.render('tick');
-  eq('host render of the same item does not toast again', toastOf(H), '');
+  eq('host render of the same item does not add another danmaku', dmAll(H).all.length, hCount);
+  sd.fresh();
+  dmReset(H);
+  sd.S.log = [
+    {w:-1, id:9001, by:1, dm:'挑戰者 🚀拉抬 · AAPL', t:'挑戰者使用了🚀拉抬，目標 AAPL'},
+    {w:-1, id:9002, by:1, dm:'挑戰者 💣砸盤 · TSLA', t:'挑戰者使用了💣砸盤，目標 TSLA'},
+    {w:-1, id:9003, by:1, dm:'挑戰者 🎯狙擊 · NVDA', t:'挑戰者使用了🎯狙擊，目標 NVDA'}
+  ];
+  H.announceItems();
+  const burst = dmAll(H);
+  eq('a burst keeps every danmaku in a lane or the queue', burst.all.length, 3);
+  check('burst lanes do not collapse into one node', burst.nodes.length >= 1 && burst.nodes.length < 3 && burst.nodes.length + burst.q.length === 3);
+  check('burst still names every target', ['AAPL','TSLA','NVDA'].every(s => burst.all.some(t => t.includes(s))));
+  H.announceItems();
+  eq('announcing the same burst again does not duplicate it', dmAll(H).all.length, 3);
+  dmReset(H);
+  H.document.documentElement.dataset.dmReduce = '1';
+  sd.S.log.unshift({w:-1, id:9004, by:1, dm:'挑戰者 💣砸盤 · AMD', t:'挑戰者使用了💣砸盤，目標 AMD'});
+  H.announceItems();
+  const stat = H.document.querySelector('#dm .dm.static');
+  check('reduced motion uses a static readable banner', !!stat && stat.textContent.includes('AMD') && getComputedStyle(stat).pointerEvents === 'none');
+  H.document.documentElement.dataset.dmReduce = '';
   H.openInv();
   const inv = el(H,'invb').textContent;
   check('inventory states the scaled strengths', inv.includes('+7.8%') && inv.includes('−7.8%') && inv.includes('10.4～19.5%'));

@@ -217,6 +217,16 @@ async function main(){
       document.getElementById('pane-host').style.display = '';
       const H = document.getElementById('host').contentWindow;
       const sd = H.__SD;
+      sd.S.brk = 0; sd.S.setl = 0; sd.S.over = false; sd.S.tick = 40;
+      sd.act(0, {s:'AAPL', pw:1});
+      sd.act(1, {s:'TSLA', pw:-1});
+    })()`);
+    await sleep(350);
+    await screenshot(cdp, path.join(ARTIFACTS, 'opponent_item_danmaku.png'));
+    await evaluate(cdp, `(() => {
+      document.getElementById('pane-host').style.display = '';
+      const H = document.getElementById('host').contentWindow;
+      const sd = H.__SD;
       sd.S.round = 2; sd.S.R = 5; sd.S.tick = sd.TICKS - 4;
       sd.S.brk = 0; sd.S.setl = 0; sd.S.over = false;
       sd.send('tick');
